@@ -78,6 +78,10 @@ model Business {
   storedFiles       StoredFile[]
   recurringInvoices RecurringInvoice[]
   mileageEntries    MileageEntry[]
+  // Phase 3 — banking
+  bankConnections        BankConnection[]
+  categorizationRules    CategorizationRule[]
+  reconciliationSessions ReconciliationSession[]
 
   @@map("businesses")
 }
@@ -608,4 +612,162 @@ model MileageEntry {
 
   @@index([businessId, date])
   @@map("mileage_entries")
+}
+
+// ===========================================================================
+// Phase 3 — Bank feeds & reconciliation
+// ===========================================================================
+
+enum BankConnectionStatus {
+  ACTIVE
+  ERROR
+  DISCONNECTED
+
+  @@map("bank_connection_status")
+}
+
+// A connection to a bank data provider. `provider` selects the adapter:
+// "mock" (deterministic sandbox feed) or "plaid" (real credentials required).
+model BankConnection {
+  id              String               @id @default(cuid())
+  businessId      String
+  provider        String
+  institutionName String
+  status          BankConnectionStatus @default(ACTIVE)
+  // Provider access token, AES-256-GCM encrypted (see src/lib/crypto.ts).
+  // Never stored in plaintext; null for the mock provider.
+  accessTokenEncrypted String?
+  // Mock feed cursor; also useful as a generic sync counter.
+  syncCount       Int                  @default(0)
+  lastSyncAt      DateTime?
+  createdAt       DateTime             @default(now())
+
+  business Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  accounts BankAccountLink[]
+
+  @@map("bank_connections")
+}
+
+// One bank/card account inside a connection, mapped onto a ledger account
+// from the chart of accounts. All imported activity for the link lands
+// against that ledger account.
+model BankAccountLink {
+  id                String @id @default(cuid())
+  connectionId      String
+  businessId        String
+  externalAccountId String
+  name              String
+  mask              String?
+  currency          String
+  ledgerAccountId   String
+
+  connection   BankConnection        @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  transactions ImportedTransaction[]
+
+  @@unique([connectionId, externalAccountId])
+  @@map("bank_account_links")
+}
+
+enum ImportedTxnStatus {
+  // Imported, not yet on the books.
+  PENDING
+  // A journal entry was created from this transaction.
+  CATEGORIZED
+  // Matched to an already-posted journal line — no new entry.
+  MATCHED
+  // Deliberately kept off the books (duplicates, personal spend).
+  EXCLUDED
+
+  @@map("imported_txn_status")
+}
+
+model ImportedTransaction {
+  id                String            @id @default(cuid())
+  businessId        String
+  bankAccountLinkId String
+  // Provider's transaction id; the unique constraint makes re-syncs idempotent.
+  externalId        String
+  date              DateTime          @db.Date
+  description       String
+  // Signed, in minor units of the link currency: negative = money out.
+  // (Sign convention lives only at the import boundary — the ledger side
+  // always uses direction + positive amounts.)
+  amount            BigInt
+  status            ImportedTxnStatus @default(PENDING)
+  // Set when categorized:
+  journalEntryId    String?           @unique
+  // Set when matched to an existing posted line:
+  matchedJournalLineId String?        @unique
+  // Prefill from rules / frequency heuristics; user confirms.
+  suggestedAccountId   String?
+  suggestedByRuleId    String?
+  createdAt         DateTime          @default(now())
+
+  bankAccountLink BankAccountLink @relation(fields: [bankAccountLinkId], references: [id], onDelete: Cascade)
+
+  @@unique([bankAccountLinkId, externalId])
+  @@index([businessId, status])
+  @@index([bankAccountLinkId, date])
+  @@map("imported_transactions")
+}
+
+enum RuleMatchType {
+  CONTAINS
+  REGEX
+
+  @@map("rule_match_type")
+}
+
+enum RuleDirection {
+  INFLOW
+  OUTFLOW
+  BOTH
+
+  @@map("rule_direction")
+}
+
+model CategorizationRule {
+  id         String        @id @default(cuid())
+  businessId String
+  pattern    String
+  matchType  RuleMatchType @default(CONTAINS)
+  appliesTo  RuleDirection @default(BOTH)
+  accountId  String
+  // Lower number wins when several rules match.
+  priority   Int           @default(100)
+  createdAt  DateTime      @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, priority])
+  @@map("categorization_rules")
+}
+
+enum ReconciliationStatus {
+  OPEN
+  COMPLETED
+
+  @@map("reconciliation_status")
+}
+
+// A statement-reconciliation working session: pick a ledger account and a
+// statement period, enter the statement's opening/closing balances, then work
+// the imported transactions until the variance hits zero.
+model ReconciliationSession {
+  id              String               @id @default(cuid())
+  businessId      String
+  ledgerAccountId String
+  statementStart  DateTime             @db.Date
+  statementEnd    DateTime             @db.Date
+  // Statement balances in functional-currency minor units.
+  startingBalance BigInt
+  endingBalance   BigInt
+  status          ReconciliationStatus @default(OPEN)
+  completedAt     DateTime?
+  createdAt       DateTime             @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, status])
+  @@map("reconciliation_sessions")
 }
