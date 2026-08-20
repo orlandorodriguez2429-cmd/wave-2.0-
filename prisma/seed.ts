@@ -20,7 +20,10 @@ async function main() {
     business = membership!.business;
     console.log('Seed: demo user exists, topping up newer sample data only.');
   } else {
-    user = await prisma.user.create({ data: { email: DEMO_EMAIL, name: 'Demo Owner' } });
+    const { hashPassword } = await import('../src/lib/auth');
+    user = await prisma.user.create({
+      data: { email: DEMO_EMAIL, name: 'Demo Owner', passwordHash: await hashPassword('demo-password-123') },
+    });
     business = await createBusiness({
       userId: user.id,
       name: 'Acme Consulting LLC',

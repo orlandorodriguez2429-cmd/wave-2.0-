@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
-import { getCurrentContext } from '@/lib/context';
+import { requireContext } from '@/lib/context';
 import { connectBank, syncConnection } from '@/lib/banking/import';
 import { categorizeTransaction, excludeTransaction, matchTransaction } from '@/lib/banking/categorize';
 import { completeReconciliation } from '@/lib/banking/reconcile';
@@ -23,7 +23,7 @@ function errorResult(err: unknown): ActionResult {
 }
 
 export async function connectSandboxBankAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   const ledgerAccountId = String(formData.get('ledgerAccountId') ?? '');
   if (!ledgerAccountId) return { error: 'Pick the ledger account this bank feed maps to.' };
   try {
@@ -42,13 +42,13 @@ export async function connectSandboxBankAction(_prev: ActionResult, formData: Fo
 }
 
 export async function syncConnectionAction(connectionId: string): Promise<void> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   await syncConnection({ businessId: business.id, userId: user.id, connectionId });
   revalidatePath('/banking');
 }
 
 export async function categorizeTxnAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   try {
     await categorizeTransaction({
       businessId: business.id,
@@ -64,19 +64,19 @@ export async function categorizeTxnAction(_prev: ActionResult, formData: FormDat
 }
 
 export async function matchTxnAction(transactionId: string, journalLineId: string): Promise<void> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   await matchTransaction({ businessId: business.id, userId: user.id, transactionId, journalLineId });
   revalidatePath('/banking');
 }
 
 export async function excludeTxnAction(transactionId: string): Promise<void> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   await excludeTransaction({ businessId: business.id, userId: user.id, transactionId });
   revalidatePath('/banking');
 }
 
 export async function createRuleAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   const pattern = String(formData.get('pattern') ?? '').trim();
   const accountId = String(formData.get('accountId') ?? '');
   const matchType = String(formData.get('matchType') ?? 'CONTAINS') === 'REGEX' ? 'REGEX' : 'CONTAINS';
@@ -112,7 +112,7 @@ export async function createRuleAction(_prev: ActionResult, formData: FormData):
 }
 
 export async function deleteRuleAction(ruleId: string): Promise<void> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   const rule = await prisma.categorizationRule.findUniqueOrThrow({ where: { id: ruleId } });
   if (rule.businessId !== business.id) throw new Error('Wrong business.');
   await prisma.categorizationRule.delete({ where: { id: ruleId } });
@@ -130,7 +130,7 @@ export async function deleteRuleAction(ruleId: string): Promise<void> {
 }
 
 export async function createReconciliationAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   try {
     const start = String(formData.get('statementStart') ?? '');
     const end = String(formData.get('statementEnd') ?? '');
@@ -165,7 +165,7 @@ export async function createReconciliationAction(_prev: ActionResult, formData: 
 }
 
 export async function completeReconciliationAction(sessionId: string): Promise<void> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   await completeReconciliation({ businessId: business.id, userId: user.id, sessionId });
   revalidatePath(`/banking/reconcile/${sessionId}`);
   revalidatePath('/banking/reconcile');

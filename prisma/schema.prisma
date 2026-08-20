@@ -93,6 +93,12 @@ model Business {
   taxState     String?
   taxZip       String?
   form1099s    Form1099[]
+  // Phase 6 — period close lock: the engine refuses postings dated on or
+  // before this date. Set by closing a period; cleared only by reopening.
+  booksClosedThrough DateTime? @db.Date
+  periodCloses         PeriodClose[]
+  apiTokens            ApiToken[]
+  webhookSubscriptions WebhookSubscription[]
 
   @@map("businesses")
 }
@@ -963,4 +969,59 @@ model Form1099 {
   @@unique([businessId, vendorId, taxYear, formKind, version])
   @@index([businessId, taxYear, status])
   @@map("form1099s")
+}
+
+// ===========================================================================
+// Phase 6 — auth sessions, period close, API tokens & webhooks
+// ===========================================================================
+
+// Month-end/period close: an accountant-facing checklist that ends by locking
+// the ledger through the period end (Business.booksClosedThrough). Posting a
+// journal entry dated on/before the lock date is refused by the engine.
+model PeriodClose {
+  id         String   @id @default(cuid())
+  businessId String
+  periodEnd  DateTime @db.Date
+  // [{ key, label, done }] — editable checklist state.
+  checklist  Json
+  status     String   @default("OPEN") // OPEN | CLOSED
+  closedAt   DateTime?
+  closedById String?
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, periodEnd])
+  @@map("period_closes")
+}
+
+// Developer API access. Only a SHA-256 hash of the token is stored; the
+// plaintext is shown once at creation.
+model ApiToken {
+  id         String    @id @default(cuid())
+  businessId String
+  name       String
+  tokenHash  String    @unique
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("api_tokens")
+}
+
+model WebhookSubscription {
+  id         String   @id @default(cuid())
+  businessId String
+  url        String
+  // e.g. ["invoice.approved", "journal_entry.posted"]
+  events     String[]
+  secret     String
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("webhook_subscriptions")
 }

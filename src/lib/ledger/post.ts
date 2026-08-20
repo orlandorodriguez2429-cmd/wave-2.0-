@@ -37,6 +37,15 @@ export async function createAndPostEntry(opts: PostEntryOptions) {
   return prisma.$transaction(async (tx) => {
     const business = await tx.business.findUniqueOrThrow({ where: { id: businessId } });
 
+    // Period-close lock: closed periods accept no new postings. Corrections
+    // to a closed period are entered in the current (open) period instead.
+    if (business.booksClosedThrough && input.date <= business.booksClosedThrough) {
+      throw new LedgerValidationError(
+        `The books are closed through ${business.booksClosedThrough.toISOString().slice(0, 10)} — ` +
+          'post the entry in the open period or reopen the period first.',
+      );
+    }
+
     if (input.currency === business.functionalCurrency && input.exchangeRate.trim() !== '1') {
       throw new LedgerValidationError(
         'Entries in the functional currency must use an exchange rate of exactly 1.',

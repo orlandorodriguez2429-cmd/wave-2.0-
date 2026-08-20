@@ -53,7 +53,8 @@ export default async function ProfitLossPage({
         <div>
           <h1 className="text-2xl font-semibold">Profit &amp; Loss</h1>
           <p className="text-sm text-slate-500 mt-1">
-            {from} → {to} · {currency}
+            {from} → {to} · {currency} ·{' '}
+            <a href={`/reports/export/profit-loss?from=${from}&to=${to}`} className="text-blue-700 hover:underline">CSV</a>
           </p>
         </div>
         <DateRangeForm from={from} to={to} />

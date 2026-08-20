@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
-import { getCurrentContext } from '@/lib/context';
+import { requireContext } from '@/lib/context';
 import { LedgerValidationError } from '@/lib/ledger/validate';
 import { parseAmount } from '@/lib/money';
 import { parseQuantity } from '@/lib/invoicing/totals';
@@ -49,7 +49,7 @@ function parseDate(value: FormDataEntryValue | null, label: string): Date {
 // ---------------------------------------------------------------------------
 
 export async function createCustomerAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('EMPLOYEE');
   const name = String(formData.get('name') ?? '').trim();
   if (!name) return { error: 'Customer name is required.' };
   const customer = await prisma.customer.create({
@@ -75,7 +75,7 @@ export async function createCustomerAction(_prev: ActionResult, formData: FormDa
 }
 
 export async function createVendorAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('EMPLOYEE');
   const name = String(formData.get('name') ?? '').trim();
   if (!name) return { error: 'Vendor name is required.' };
   const vendor = await prisma.vendor.create({
@@ -101,7 +101,7 @@ export async function createVendorAction(_prev: ActionResult, formData: FormData
 }
 
 export async function createTaxRateAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   const name = String(formData.get('name') ?? '').trim();
   const jurisdiction = String(formData.get('jurisdiction') ?? '').trim() || null;
   const rateStr = String(formData.get('rate') ?? '').trim();
@@ -162,7 +162,7 @@ function linesFromForm(formData: FormData, currency: string): InvoiceLineInput[]
 }
 
 export async function createInvoiceAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('EMPLOYEE');
   try {
     const currency = String(formData.get('currency') ?? business.functionalCurrency);
     const invoice = await createDraftInvoice({
@@ -187,28 +187,35 @@ export async function createInvoiceAction(_prev: ActionResult, formData: FormDat
 }
 
 export async function approveInvoiceAction(invoiceId: string): Promise<void> {
-  const { user, business } = await getCurrentContext();
-  await approveInvoice({ businessId: business.id, userId: user.id, invoiceId });
+  const { user, business } = await requireContext('ACCOUNTANT');
+  const invoice = await approveInvoice({ businessId: business.id, userId: user.id, invoiceId });
+  const { dispatchWebhooks } = await import('@/lib/webhooks');
+  await dispatchWebhooks(business.id, 'invoice.approved', {
+    invoiceId: invoice.id,
+    number: invoice.number,
+    total: invoice.total.toString(),
+    currency: invoice.currency,
+  });
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath('/invoices');
 }
 
 export async function voidInvoiceAction(invoiceId: string): Promise<void> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   await voidInvoice({ businessId: business.id, userId: user.id, invoiceId });
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath('/invoices');
 }
 
 export async function deleteDraftInvoiceAction(invoiceId: string): Promise<void> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   await deleteDraftInvoice({ businessId: business.id, userId: user.id, invoiceId });
   revalidatePath('/invoices');
   redirect('/invoices');
 }
 
 export async function recordPaymentAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   const invoiceId = String(formData.get('invoiceId') ?? '');
   try {
     const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id: invoiceId } });
@@ -236,7 +243,7 @@ export async function recordPaymentAction(_prev: ActionResult, formData: FormDat
 // ---------------------------------------------------------------------------
 
 export async function makeRecurringAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   const invoiceId = String(formData.get('invoiceId') ?? '');
   const frequency = String(formData.get('frequency') ?? 'MONTHLY');
   const autoApprove = formData.get('autoApprove') === 'on';
@@ -298,7 +305,7 @@ export async function makeRecurringAction(_prev: ActionResult, formData: FormDat
 // ---------------------------------------------------------------------------
 
 export async function createEstimateAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('EMPLOYEE');
   try {
     const currency = String(formData.get('currency') ?? business.functionalCurrency);
     const expiry = String(formData.get('expiryDate') ?? '');
@@ -326,14 +333,14 @@ export async function setEstimateStatusAction(
   estimateId: string,
   status: 'SENT' | 'ACCEPTED' | 'DECLINED',
 ): Promise<void> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   await setEstimateStatus({ businessId: business.id, userId: user.id, estimateId, status });
   revalidatePath(`/estimates/${estimateId}`);
   revalidatePath('/estimates');
 }
 
 export async function convertEstimateAction(estimateId: string): Promise<void> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   const invoice = await convertEstimateToInvoice({ businessId: business.id, userId: user.id, estimateId });
   revalidatePath('/estimates');
   revalidatePath('/invoices');
@@ -345,7 +352,7 @@ export async function convertEstimateAction(estimateId: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function createExpenseAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('EMPLOYEE');
   try {
     const currency = String(formData.get('currency') ?? business.functionalCurrency);
 
@@ -404,13 +411,13 @@ export async function createExpenseAction(_prev: ActionResult, formData: FormDat
 }
 
 export async function reverseExpenseAction(expenseId: string): Promise<void> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   await reverseExpense({ businessId: business.id, userId: user.id, expenseId });
   revalidatePath('/expenses');
 }
 
 export async function createMileageAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('EMPLOYEE');
   const milesRaw = String(formData.get('miles') ?? '').trim();
   const rateRaw = String(formData.get('ratePerMile') ?? '').trim();
   const purpose = String(formData.get('purpose') ?? '').trim();

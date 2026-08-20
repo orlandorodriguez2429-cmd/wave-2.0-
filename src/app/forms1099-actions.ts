@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/db';
-import { getCurrentContext } from '@/lib/context';
+import { requireContext } from '@/lib/context';
 import { encryptSecret } from '@/lib/crypto';
 import { parseAmount } from '@/lib/money';
 import {
@@ -20,13 +20,13 @@ function err(e: unknown): ActionResult {
 }
 
 export async function generateFormsAction(taxYear: number): Promise<void> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   await generateDrafts({ businessId: business.id, userId: user.id, taxYear });
   revalidatePath('/1099/forms');
 }
 
 export async function updateFormAmountsAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   const formId = String(formData.get('formId') ?? '');
   try {
     const boxes = formData.getAll('boxNumber').map(String);
@@ -45,7 +45,7 @@ export async function updateFormAmountsAction(_prev: ActionResult, formData: For
 }
 
 export async function markReadyAction(formId: string): Promise<void> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   await markReady({ businessId: business.id, userId: user.id, formId });
   revalidatePath(`/1099/forms/${formId}`);
   revalidatePath('/1099/forms');
@@ -54,7 +54,7 @@ export async function markReadyAction(formId: string): Promise<void> {
 // The ONLY path to the transmitter — invoked by the explicit
 // "Submit to IRS" confirmation button, never by any job or automation.
 export async function submitFormsAction(taxYear: number): Promise<void> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   const ready = await prisma.form1099.findMany({
     where: { businessId: business.id, taxYear, status: 'READY' },
     select: { id: true },
@@ -71,20 +71,20 @@ export async function submitFormsAction(taxYear: number): Promise<void> {
 }
 
 export async function correctFormAction(formId: string): Promise<void> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   await createCorrection({ businessId: business.id, userId: user.id, formId });
   revalidatePath('/1099/forms');
 }
 
 export async function deliverCopyBAction(formId: string, method: 'electronic' | 'mail'): Promise<void> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   await deliverCopyB({ businessId: business.id, userId: user.id, formId, method });
   revalidatePath(`/1099/forms/${formId}`);
   revalidatePath('/1099/forms');
 }
 
 export async function setPayerInfoAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('OWNER');
   const ein = String(formData.get('ein') ?? '').replace(/[^0-9]/g, '');
   if (ein && ein.length !== 9) return { error: 'EIN must be 9 digits.' };
   try {

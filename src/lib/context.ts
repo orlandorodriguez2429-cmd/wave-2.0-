@@ -1,20 +1,48 @@
+import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
+import { readSession, requireRole } from '@/lib/auth';
+import type { MembershipRole } from '@/generated/prisma/enums';
 
-// Placeholder session context until interactive auth ships (later phase):
-// every request acts as the seeded demo owner on their first business. All
-// service-layer calls already take explicit userId/businessId, so swapping in
-// a real session is a change to this file only.
-export async function getCurrentContext() {
-  const membership = await prisma.membership.findFirst({
-    where: { role: 'OWNER' },
-    orderBy: { createdAt: 'asc' },
-    include: { user: true, business: true },
+export interface AppContext {
+  user: { id: string; email: string; name: string };
+  business: NonNullable<Awaited<ReturnType<typeof prisma.business.findUnique>>>;
+  role: MembershipRole;
+  memberships: Array<{ businessId: string; businessName: string; role: MembershipRole }>;
+}
+
+/**
+ * Resolve the signed session cookie into user + active business + role.
+ * Membership is re-checked against the DB every request — a revoked member's
+ * cookie is worthless. No session → /login.
+ */
+export async function getCurrentContext(): Promise<AppContext> {
+  const session = await readSession();
+  if (!session) redirect('/login');
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.userId },
+    include: { memberships: { include: { business: true }, orderBy: { createdAt: 'asc' } } },
   });
-  if (!membership) {
-    throw new Error('No business found — run `npx prisma db seed` first.');
-  }
+  if (!user || user.memberships.length === 0) redirect('/login');
+
+  const membership =
+    user.memberships.find((m) => m.businessId === session.businessId) ?? user.memberships[0];
+
   return {
-    user: membership.user,
+    user: { id: user.id, email: user.email, name: user.name },
     business: membership.business,
+    role: membership.role,
+    memberships: user.memberships.map((m) => ({
+      businessId: m.businessId,
+      businessName: m.business.name,
+      role: m.role,
+    })),
   };
+}
+
+/** Context + role gate in one call — mutating actions state their floor here. */
+export async function requireContext(minimum: MembershipRole): Promise<AppContext> {
+  const ctx = await getCurrentContext();
+  requireRole(ctx.role, minimum);
+  return ctx;
 }

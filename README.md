@@ -2,53 +2,57 @@
 
 Small-business accounting with correct double-entry bookkeeping underneath, and a first-class 1099 contractor workflow on top. See [PROJECT.md](./PROJECT.md) for the full product brief and phase plan.
 
-**Current status: Phase 1 — Ledger core** (chart of accounts, double-entry engine, manual journal entries, trial balance / P&L / balance sheet).
+**Status: Phases 1–6 built** — ledger core · invoicing & expenses · bank feeds & reconciliation · W-9/1099 tracking · 1099 generation & e-file · reports, auth, multi-entity, roles, close-the-books, API.
 
 ## Stack
 
 - Next.js 15 (App Router) + TypeScript + Tailwind CSS 4
 - PostgreSQL via Prisma 7 (`@prisma/adapter-pg` driver adapter)
-- Vitest (unit + DB integration tests)
+- pdfkit (invoice + 1099 PDFs), Vitest (unit + DB integration tests)
 
 ## Getting started
 
 Requirements: Node 20+, PostgreSQL 14+.
 
 ```bash
-# 1. Install dependencies
 npm install
 
-# 2. Create a database and role (adjust to taste)
+# database + role (adjust to taste)
 sudo -u postgres psql \
   -c "CREATE ROLE wave WITH LOGIN PASSWORD 'wave_dev_password' CREATEDB;" \
   -c "CREATE DATABASE wave OWNER wave;"
 
-# 3. Point the app at it
-cp .env.example .env   # edit DATABASE_URL if yours differs
+cp .env.example .env   # set DATABASE_URL and a real ENCRYPTION_KEY (32 bytes base64)
 
-# 4. Apply migrations and seed demo data
-npx prisma migrate dev
-npx prisma db seed
-
-# 5. Run
-npm run dev            # http://localhost:3000
+npx prisma migrate deploy   # apply all migrations
+npx prisma db seed          # demo business + sample data
+npm run dev                 # http://localhost:3000
 ```
 
-The seed creates a demo business ("Acme Consulting LLC") with the standard chart of accounts and a few posted entries so the dashboard and reports have data. Until interactive auth ships (later phase), every request acts as the seeded demo owner — see `src/lib/context.ts`, the single swap point.
+**Demo login:** `demo@wave2.local` / `demo-password-123`
 
-## Tests
+Background jobs (recurring invoices): `npx tsx scripts/run-jobs.ts` on a cron.
+Tests: `npx vitest run` (59 tests; integration tests hit `DATABASE_URL`).
 
-```bash
-npx vitest run
-```
+## Environment
 
-Unit tests cover money parsing/formatting/FX conversion and entry validation. Integration tests run against `DATABASE_URL` and prove the invariants hold **at the database level**: posted entries and their lines reject `UPDATE`/`DELETE` (even via raw SQL), unbalanced entries cannot reach `POSTED`, amounts must be positive, reversals link and cancel exactly, and the balance sheet balances.
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Postgres connection (this is a ledger — Postgres only). |
+| `ENCRYPTION_KEY` | 32 bytes base64; AES-256-GCM for TINs, EINs, bank tokens. Sessions are HMAC-signed with a derived key. |
+| `EFILE_TRANSMITTER` | `mock` (sandbox provider, default) or `iris` (needs `IRIS_TCC` + credentials). |
+| `PLAID_CLIENT_ID` / `PLAID_SECRET` | Activates the real Plaid adapter (sandbox bank feed works without). |
 
-## Ledger design (the part to understand before touching anything)
+## Architecture notes
 
-- **Double entry, always.** A `JournalEntry` owns ≥ 2 `JournalLine`s; each line is a positive integer amount (minor units) plus a `DEBIT`/`CREDIT` direction. Debits must equal credits — validated in the service layer (`src/lib/ledger/validate.ts`) and enforced again by a Postgres trigger at the `DRAFT → POSTED` transition.
-- **Immutable once posted.** Postgres triggers (`prisma/migrations/*_ledger_integrity`) block any `UPDATE`/`DELETE` of a posted entry or its lines, and block inserting entries directly in `POSTED` state. Corrections are reversing entries linked via `reversesId`; the original row is never touched.
-- **Money is integers.** Minor units (`BigInt`) everywhere; decimal parsing/formatting never passes through floats (`src/lib/money.ts`).
-- **Multi-currency.** Entries carry a transaction currency + exchange rate; every line stores both the transaction amount and the functional-currency amount, balanced in both. FX rounding residue is allocated to the largest line so the functional view balances exactly.
-- **Audit trail.** Every ledger-affecting action writes an `AuditLog` row (who/when/what), visible at `/audit`.
-- **Reports are derived, never stored.** Trial balance, P&L, and balance sheet aggregate posted lines in SQL (`src/lib/ledger/reports.ts`); the balance sheet folds net income into equity as Current Year Earnings, so Assets = Liabilities + Equity holds by construction.
+- **Double entry, always.** Balanced debit/credit journal entries against the chart of accounts; enforced in the service layer *and* by Postgres triggers (posting gate, immutability of posted entries and lines, positive-amount CHECKs). Corrections are linked reversing entries — nothing is ever edited in place.
+- **Money is integers** (BigInt minor units) end to end; quantities in thousandths; tax rates in parts-per-million; FX via just-in-time integer arithmetic with rounding-residue allocation.
+- **Every business document posts through the same engine**: invoice approval, payments, voids, expenses, bank-feed categorizations. Reports (trial balance, P&L, balance sheet, cash flow, sales tax, aged receivables) are derived at query time and export to CSV.
+- **1099 pipeline** (the differentiator): W-9 collection via single-use public links with e-consent capture → per-year, per-box payment accumulation with the card/1099-K exclusion → per-tax-year configurable thresholds ($600 → $2,000 for TY2026+, editable, verify against IRS.gov) → versioned immutable forms with linked corrections → pluggable transmitter (sandbox provider now, direct IRIS A2A stub behind a TCC) → Copy B delivery with consent rules. E-file submission only ever happens behind an explicit human confirmation click.
+- **Secrets**: TINs/EINs/bank tokens stored AES-256-GCM encrypted, displayed masked, never logged or put in audit payloads. API tokens stored as SHA-256 hashes.
+- **Auth & tenancy**: signed cookie sessions, multi-business per login with a switcher, roles (owner / accountant / employee / view-only) enforced in every mutating action, append-only audit log, period close locks the ledger.
+- **Developer API**: `GET /api/v1/{accounts,invoices,reports/trial-balance}`, `GET|POST /api/v1/webhooks` with `Authorization: Bearer wave_…`; webhook deliveries HMAC-signed (`X-Wave-Signature`).
+
+## What is sandboxed vs production-ready
+
+Real external integrations are behind adapters with working sandbox implementations: bank feeds (mock provider ↔ Plaid), invoice payments (sandbox portal button ↔ Stripe Checkout), e-file (mock transmitter ↔ provider API / IRIS A2A), file storage (local disk ↔ S3). Receipt OCR, W-2 payroll, late fees/reminders delivery (email), and Aged Payables (needs a bills module) are noted future work.

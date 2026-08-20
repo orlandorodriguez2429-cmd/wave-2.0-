@@ -16,6 +16,21 @@ const reports = [
     title: 'Trial Balance',
     desc: 'Every account with its net debit or credit balance. Total debits always equal total credits.',
   },
+  {
+    href: '/reports/cash-flow',
+    title: 'Cash Flow',
+    desc: 'Cash movement classified into operating, investing, and financing activities.',
+  },
+  {
+    href: '/reports/sales-tax',
+    title: 'Sales Tax',
+    desc: 'Tax collected on invoices by rate and jurisdiction — what you owe each authority.',
+  },
+  {
+    href: '/reports/aged-receivables',
+    title: 'Aged Receivables',
+    desc: 'Outstanding invoice balances bucketed by how overdue they are.',
+  },
 ];
 
 export default function ReportsPage() {
@@ -35,8 +50,7 @@ export default function ReportsPage() {
         ))}
       </div>
       <p className="text-sm text-slate-400">
-        Cash Flow, Sales Tax, and Aged Receivables/Payables reports arrive with invoicing and banking in later
-        phases. CSV/PDF export lands in the reports polish phase.
+        Every report exports to CSV from its page. Aged Payables arrives with the bills module.
       </p>
     </div>
   );

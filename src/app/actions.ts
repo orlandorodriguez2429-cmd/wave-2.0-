@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
-import { getCurrentContext } from '@/lib/context';
+import { requireContext } from '@/lib/context';
 import { createAndPostEntry, reverseEntry } from '@/lib/ledger/post';
 import { LedgerValidationError } from '@/lib/ledger/validate';
 import { parseAmount } from '@/lib/money';
@@ -20,7 +20,7 @@ const ACCOUNT_TYPES: AccountType[] = ['ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 
 // ---------------------------------------------------------------------------
 
 export async function createAccountAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   const code = String(formData.get('code') ?? '').trim();
   const name = String(formData.get('name') ?? '').trim();
   const type = String(formData.get('type') ?? '') as AccountType;
@@ -53,7 +53,7 @@ export async function createAccountAction(_prev: ActionResult, formData: FormDat
 }
 
 export async function setAccountArchivedAction(accountId: string, archived: boolean): Promise<void> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   const account = await prisma.account.findUniqueOrThrow({ where: { id: accountId } });
   if (account.businessId !== business.id) throw new Error('Account not in current business.');
   if (account.isSystem && archived) throw new Error('System accounts cannot be archived.');
@@ -77,7 +77,7 @@ export async function setAccountArchivedAction(accountId: string, archived: bool
 // ---------------------------------------------------------------------------
 
 export async function createJournalEntryAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
 
   const dateStr = String(formData.get('date') ?? '');
   const memo = String(formData.get('memo') ?? '');
@@ -132,7 +132,7 @@ export async function createJournalEntryAction(_prev: ActionResult, formData: Fo
 }
 
 export async function reverseEntryAction(entryId: string): Promise<void> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   await reverseEntry({ businessId: business.id, userId: user.id, entryId });
   revalidatePath('/journal');
   revalidatePath(`/journal/${entryId}`);

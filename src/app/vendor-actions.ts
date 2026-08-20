@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/db';
-import { getCurrentContext } from '@/lib/context';
+import { requireContext } from '@/lib/context';
 import { parseAmount } from '@/lib/money';
 import { requestW9, setW9Manually, type W9Data } from '@/lib/forms1099/w9';
 import { recordVendorPayment } from '@/lib/forms1099/tracking';
@@ -11,7 +11,7 @@ import type { PaymentMethod, TaxEntityType, TinType } from '@/generated/prisma/e
 import type { ActionResult } from './actions';
 
 export async function requestW9Action(vendorId: string): Promise<void> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   await requestW9({ businessId: business.id, userId: user.id, vendorId });
   revalidatePath(`/vendors/${vendorId}`);
   revalidatePath('/vendors');
@@ -34,7 +34,7 @@ function w9FromForm(formData: FormData): W9Data {
 }
 
 export async function enterW9Action(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   const vendorId = String(formData.get('vendorId') ?? '');
   try {
     await setW9Manually({ businessId: business.id, userId: user.id, vendorId, data: w9FromForm(formData) });
@@ -61,7 +61,7 @@ export async function submitW9PublicAction(_prev: ActionResult, formData: FormDa
 }
 
 export async function logVendorPaymentAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   const vendorId = String(formData.get('vendorId') ?? '');
   try {
     const dateStr = String(formData.get('date') ?? '');
@@ -89,7 +89,7 @@ export async function logVendorPaymentAction(_prev: ActionResult, formData: Form
 }
 
 export async function setVendorBoxAction(vendorId: string, boxCode: string): Promise<void> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   if (!BOX_BY_CODE.has(boxCode)) throw new Error('Unknown box code.');
   const vendor = await prisma.vendor.findUniqueOrThrow({ where: { id: vendorId } });
   if (vendor.businessId !== business.id) throw new Error('Wrong business.');
@@ -108,7 +108,7 @@ export async function setVendorBoxAction(vendorId: string, boxCode: string): Pro
 }
 
 export async function updateThresholdAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const { user, business } = await getCurrentContext();
+  const { user, business } = await requireContext('ACCOUNTANT');
   const taxYear = Number(formData.get('taxYear'));
   if (!Number.isInteger(taxYear) || taxYear < 2020 || taxYear > 2100) return { error: 'Invalid tax year.' };
   try {
