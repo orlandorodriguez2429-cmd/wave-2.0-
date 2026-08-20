@@ -82,6 +82,8 @@ model Business {
   bankConnections        BankConnection[]
   categorizationRules    CategorizationRule[]
   reconciliationSessions ReconciliationSession[]
+  // Phase 4 — 1099 tracking
+  vendorPayments VendorPayment[]
 
   @@map("businesses")
 }
@@ -305,7 +307,6 @@ model Customer {
   @@map("customers")
 }
 
-// Minimal vendor record for expense tracking; Phase 4 adds W-9/1099 fields.
 model Vendor {
   id         String   @id @default(cuid())
   businessId String
@@ -317,8 +318,38 @@ model Vendor {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  // --- W-9 / 1099 (Phase 4) ---
+  // Only true once W-9 data is complete; gates form generation.
+  is1099Eligible Boolean  @default(false)
+  w9Status       W9Status @default(NOT_REQUESTED)
+  // Public token for the contractor-facing W-9 form (/w9/[token]).
+  w9RequestToken String?  @unique
+  w9RequestedAt  DateTime?
+  w9CompletedAt  DateTime?
+  legalName      String?
+  businessName   String?
+  taxEntityType  TaxEntityType?
+  // TIN: AES-256-GCM ciphertext only; last 4 kept separately for masked
+  // display. Plaintext never hits logs, audit payloads, or error messages.
+  tinEncrypted   String?
+  tinLast4       String?
+  tinType        TinType?
+  taxStreet      String?
+  taxCity        String?
+  taxState       String?
+  taxZip         String?
+  backupWithholding Boolean @default(false)
+  // Recipient consent for electronic-only Copy B delivery (IRS requires
+  // affirmative consent); null = paper mail required.
+  eDeliveryConsentAt DateTime?
+  // Which box payments default to for this vendor (e.g. rent vendors MISC_1).
+  defaultBoxCode String   @default("NEC_1")
+  // Uploaded signed W-9 (optional; structured data above is canonical).
+  w9FileId       String?  @unique
+
+  business Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
   expenses Expense[]
+  payments1099 VendorPayment[]
 
   @@index([businessId, name])
   @@map("vendors")
@@ -770,4 +801,94 @@ model ReconciliationSession {
 
   @@index([businessId, status])
   @@map("reconciliation_sessions")
+}
+
+// ===========================================================================
+// Phase 4 — W-9 collection & 1099 payment tracking
+// ===========================================================================
+
+enum TaxEntityType {
+  INDIVIDUAL_SOLE_PROP
+  C_CORP
+  S_CORP
+  PARTNERSHIP
+  TRUST_ESTATE
+  LLC_C
+  LLC_S
+  LLC_P
+  OTHER
+
+  @@map("tax_entity_type")
+}
+
+enum TinType {
+  SSN
+  EIN
+
+  @@map("tin_type")
+}
+
+enum W9Status {
+  NOT_REQUESTED
+  REQUESTED
+  COMPLETED
+
+  @@map("w9_status")
+}
+
+// Where a vendor payment came from.
+enum VendorPaymentSource {
+  EXPENSE
+  MANUAL
+
+  @@map("vendor_payment_source")
+}
+
+// A payment to a vendor tracked for information-return purposes. Created
+// automatically from expenses with a vendor, or logged manually (checks,
+// wires outside the app). Amounts are functional-currency minor units.
+//
+// 1099-K exclusion: payments made by credit card / third-party network are
+// reported by the processor, not the payer — excludedFrom1099 is set at
+// creation from the payment method and the box totals never include them.
+model VendorPayment {
+  id         String              @id @default(cuid())
+  businessId String
+  vendorId   String
+  date       DateTime            @db.Date
+  amount     BigInt
+  method     PaymentMethod
+  // Which 1099 box this payment accrues to: NEC_1, MISC_1 (rents),
+  // MISC_2 (royalties), MISC_3 (other), INT_1, DIV_1A. Config lives in
+  // src/lib/forms1099/boxes.ts.
+  boxCode    String              @default("NEC_1")
+  source     VendorPaymentSource @default(MANUAL)
+  expenseId  String?             @unique
+  memo       String?
+  excludedFrom1099 Boolean       @default(false)
+  createdAt  DateTime            @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  vendor   Vendor   @relation(fields: [vendorId], references: [id])
+
+  @@index([vendorId, date])
+  @@index([businessId, date])
+  @@map("vendor_payments")
+}
+
+// Per-tax-year IRS thresholds — configuration, NOT code constants, because
+// they change: the 1099-NEC/MISC minimum moved from $600 to $2,000 for tax
+// years beginning after 2025 (OBBBA), with inflation adjustments from 2027.
+// Values are minor units (cents). Seeded values must be verified against
+// IRS.gov before filing season — the UI says so too.
+model TaxYearConfig {
+  taxYear             Int    @id
+  necMiscThreshold    BigInt
+  intThreshold        BigInt
+  divThreshold        BigInt
+  // Combined information returns at/above which e-filing is mandatory.
+  efileMandateCount   Int    @default(10)
+  notes               String?
+
+  @@map("tax_year_configs")
 }

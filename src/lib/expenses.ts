@@ -79,6 +79,27 @@ export async function createExpense(opts: { businessId: string; userId: string; 
     include: { lines: true },
   });
 
+  // 1099 tracking: expenses paid to a vendor accumulate against their
+  // calendar-year totals (functional-currency amounts). Card payments are
+  // recorded but flagged excluded (1099-K belongs to the processor).
+  if (input.vendorId) {
+    const { recordVendorPayment } = await import('@/lib/forms1099/tracking');
+    const functionalTotal = entry.lines
+      .filter((l) => l.direction === 'CREDIT')
+      .reduce((s, l) => s + l.functionalAmount, 0n);
+    await recordVendorPayment({
+      businessId,
+      userId,
+      vendorId: input.vendorId,
+      date: input.date,
+      amount: functionalTotal,
+      method: input.paymentMethod,
+      source: 'EXPENSE',
+      expenseId: expense.id,
+      memo: input.memo,
+    });
+  }
+
   await prisma.auditLog.create({
     data: {
       businessId,
