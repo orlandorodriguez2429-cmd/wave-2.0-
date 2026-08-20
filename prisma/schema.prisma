@@ -84,6 +84,15 @@ model Business {
   reconciliationSessions ReconciliationSession[]
   // Phase 4 — 1099 tracking
   vendorPayments VendorPayment[]
+  // Phase 5 — payer identity for information returns. EIN is AES-256-GCM
+  // ciphertext + last-4, same rules as vendor TINs.
+  einEncrypted String?
+  einLast4     String?
+  taxStreet    String?
+  taxCity      String?
+  taxState     String?
+  taxZip       String?
+  form1099s    Form1099[]
 
   @@map("businesses")
 }
@@ -891,4 +900,67 @@ model TaxYearConfig {
   notes               String?
 
   @@map("tax_year_configs")
+}
+
+// ===========================================================================
+// Phase 5 — 1099 form generation, e-file, corrections
+// ===========================================================================
+
+enum Form1099Status {
+  // Generated from payment data; amounts editable in review.
+  DRAFT
+  // Reviewed and locked for submission.
+  READY
+  // Sent to the transmitter; awaiting IRS response. Immutable from here on.
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+
+  @@map("form1099_status")
+}
+
+// One information return (one vendor, one year, one form kind, one version).
+// Versioning: corrections create a NEW row with version+1 and correctsId
+// pointing at the previously filed form — filed forms are never edited.
+model Form1099 {
+  id         String         @id @default(cuid())
+  businessId String
+  vendorId   String
+  taxYear    Int
+  // 'NEC' | 'MISC' ('INT'/'DIV' stubbed).
+  formKind   String
+  version    Int            @default(1)
+  status     Form1099Status @default(DRAFT)
+  // Correction chain: this form corrects the one referenced.
+  correctsId String?        @unique
+  corrects   Form1099?      @relation("Correction", fields: [correctsId], references: [id])
+  correctedBy Form1099?     @relation("Correction")
+
+  // Box amounts in minor units, keyed by box number string (e.g. {"1": 230000}).
+  amounts    Json
+  // Snapshots frozen at generation (re-editable while DRAFT only):
+  // payer: { name, addressLine, tinLast4 } — full EIN read from Business at
+  // submit/render time, never stored here.
+  payer      Json
+  // recipient: { name, addressLine, tinLast4, tinType } — same rule for TIN.
+  recipient  Json
+
+  transmitter     String?
+  submissionId    String?
+  submittedAt     DateTime?
+  acceptedAt      DateTime?
+  rejectionReason String?
+
+  copyBDeliveredAt     DateTime?
+  // 'electronic' (requires vendor e-consent) or 'mail'.
+  copyBDeliveryMethod  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, vendorId, taxYear, formKind, version])
+  @@index([businessId, taxYear, status])
+  @@map("form1099s")
 }
