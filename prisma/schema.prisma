@@ -1,0 +1,259 @@
+// Wave 2.0 — Phase 1 data model: ledger core.
+//
+// Design principles (see PROJECT.md "Core accounting engine"):
+//  - Every money amount is an integer in minor units (cents). Never floats.
+//  - Journal entries are immutable once posted. Corrections happen via linked
+//    reversing entries — enforced both in the service layer and by Postgres
+//    triggers (see the ledger_immutability migration).
+//  - Multi-currency: each entry carries a transaction currency + exchange rate;
+//    every line stores both the transaction amount and the amount in the
+//    business's functional currency. Reports aggregate functional amounts.
+//  - Users/orgs/roles are modeled now so every ledger row has an owner and an
+//    audit trail, even though interactive auth ships in a later phase.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Identity & tenancy
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  name         String
+  // Null until interactive auth ships (later phase); never store plaintext.
+  passwordHash String?
+  createdAt    DateTime     @default(now())
+  memberships  Membership[]
+  journalEntries JournalEntry[]
+  auditLogs    AuditLog[]
+
+  @@map("users")
+}
+
+enum MembershipRole {
+  OWNER
+  ACCOUNTANT
+  EMPLOYEE
+  CONTRACTOR_VIEW
+
+  @@map("membership_role")
+}
+
+model Business {
+  id                   String   @id @default(cuid())
+  name                 String
+  legalName            String?
+  // ISO 4217 code of the functional (home) currency, e.g. "USD".
+  functionalCurrency   String   @default("USD")
+  // 1–12; month the fiscal year starts (1 = January).
+  fiscalYearStartMonth Int      @default(1)
+  accountingBasis      AccountingBasis @default(ACCRUAL)
+  // Per-business sequential journal entry numbering; bumped inside the
+  // posting transaction so numbers are gapless and race-free.
+  nextEntryNumber      Int      @default(1)
+  createdAt            DateTime @default(now())
+
+  memberships    Membership[]
+  accounts       Account[]
+  journalEntries JournalEntry[]
+  auditLogs      AuditLog[]
+
+  @@map("businesses")
+}
+
+enum AccountingBasis {
+  CASH
+  ACCRUAL
+
+  @@map("accounting_basis")
+}
+
+model Membership {
+  id         String         @id @default(cuid())
+  userId     String
+  businessId String
+  role       MembershipRole
+  createdAt  DateTime       @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, businessId])
+  @@map("memberships")
+}
+
+// ---------------------------------------------------------------------------
+// Chart of accounts
+// ---------------------------------------------------------------------------
+
+// The five fundamental types drive normal balance and statement placement.
+// COGS is a subtype of EXPENSE (see Account.subtype) so P&L can show a
+// gross-profit section without complicating the debit/credit algebra.
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  INCOME
+  EXPENSE
+
+  @@map("account_type")
+}
+
+model Account {
+  id          String      @id @default(cuid())
+  businessId  String
+  // Human-facing ledger code, unique per business (e.g. "1000").
+  code        String
+  name        String
+  type        AccountType
+  // Free-form refinement used for reporting sections & future automation:
+  // e.g. "cash_and_bank", "accounts_receivable", "cogs", "sales_tax".
+  subtype     String?
+  description String?
+  // Optional account-level currency (bank account in EUR, etc.).
+  // Null = functional currency of the business.
+  currency    String?
+  // Seeded from the standard template / required by the engine
+  // (e.g. Retained Earnings); cannot be deleted, only renamed.
+  isSystem    Boolean     @default(false)
+  // Archived accounts are hidden from pickers but keep their history.
+  isArchived  Boolean     @default(false)
+  parentId    String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  parent   Account?  @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children Account[] @relation("AccountHierarchy")
+  lines    JournalLine[]
+
+  @@unique([businessId, code])
+  @@index([businessId, type])
+  @@map("accounts")
+}
+
+// ---------------------------------------------------------------------------
+// Journal (the ledger itself)
+// ---------------------------------------------------------------------------
+
+enum EntryStatus {
+  // Editable scratch state; not visible to reports.
+  DRAFT
+  // Immutable. Enforced by DB triggers: no UPDATE/DELETE of the entry or its
+  // lines. "Reversed" is not a status mutation — it's the presence of a
+  // posted entry whose reversesId points here.
+  POSTED
+  // A draft that was discarded. Posted entries can never become VOID.
+  VOID
+
+  @@map("entry_status")
+}
+
+// Provenance of an entry; later phases add INVOICE, EXPENSE, BANK_IMPORT, etc.
+enum EntrySource {
+  MANUAL
+  SYSTEM
+
+  @@map("entry_source")
+}
+
+model JournalEntry {
+  id          String      @id @default(cuid())
+  businessId  String
+  // Sequential per business, assigned at posting time.
+  entryNumber Int?
+  // Accounting date (date-only semantics, stored at UTC midnight).
+  date        DateTime    @db.Date
+  memo        String
+  status      EntryStatus @default(DRAFT)
+  source      EntrySource @default(MANUAL)
+  // ISO 4217 transaction currency for all lines of this entry.
+  currency    String
+  // Multiply a transaction-currency amount by this to get functional
+  // currency. Exactly 1 for same-currency entries. Stored as a decimal
+  // (it's a rate, not money — money stays integer minor units).
+  exchangeRate Decimal    @default(1) @db.Decimal(20, 10)
+  postedAt    DateTime?
+  createdAt   DateTime    @default(now())
+  createdById String
+
+  // Reversal linkage: the *reversing* entry points at the original, so the
+  // original row is never touched. An entry with a non-null `reversedBy`
+  // backlink is displayed as "Reversed".
+  reversesId  String?       @unique
+  reverses    JournalEntry? @relation("Reversal", fields: [reversesId], references: [id])
+  reversedBy  JournalEntry? @relation("Reversal")
+
+  business  Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdBy User          @relation(fields: [createdById], references: [id])
+  lines     JournalLine[]
+
+  @@unique([businessId, entryNumber])
+  @@index([businessId, date])
+  @@index([businessId, status])
+  @@map("journal_entries")
+}
+
+enum LineDirection {
+  DEBIT
+  CREDIT
+
+  @@map("line_direction")
+}
+
+model JournalLine {
+  id      String        @id @default(cuid())
+  entryId String
+  // Order within the entry, for stable display.
+  lineNo  Int
+  accountId String
+  direction LineDirection
+  // Always positive; direction carries the sign. Minor units of the entry's
+  // transaction currency. DB CHECK constraints enforce positivity.
+  amount  BigInt
+  // Same line expressed in the business's functional currency minor units
+  // (equals `amount` when the entry is in the functional currency).
+  // Balance validation runs on BOTH columns.
+  functionalAmount BigInt
+  description String?
+
+  entry   JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  account Account      @relation(fields: [accountId], references: [id])
+
+  @@unique([entryId, lineNo])
+  @@index([accountId])
+  @@map("journal_lines")
+}
+
+// ---------------------------------------------------------------------------
+// Audit trail
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  businessId String
+  // Null for system-initiated actions (jobs, migrations).
+  userId     String?
+  // e.g. "journal_entry.posted", "journal_entry.reversed", "account.created"
+  action     String
+  entityType String
+  entityId   String
+  // Redacted snapshot of what changed. Never put TINs/credentials here.
+  payload    Json?
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id])
+
+  @@index([businessId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
