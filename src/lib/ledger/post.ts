@@ -1,4 +1,5 @@
 import { Prisma, PrismaClient } from '@/generated/prisma/client';
+import type { EntrySource } from '@/generated/prisma/enums';
 import { prisma } from '@/lib/db';
 import { convertMinorUnits, currencyExponent } from '@/lib/money';
 import { EntryInput, LedgerValidationError, validateEntryInput } from './validate';
@@ -9,7 +10,7 @@ export interface PostEntryOptions {
   businessId: string;
   userId: string;
   input: EntryInput;
-  source?: 'MANUAL' | 'SYSTEM';
+  source?: EntrySource;
   /** Set when this entry reverses a previously posted entry. */
   reversesId?: string;
   /**

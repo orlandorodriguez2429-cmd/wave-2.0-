@@ -45,3 +45,6 @@ next-env.d.ts
 
 # generated prisma client (rebuilt by `npm run postinstall` / prisma generate)
 /src/generated/
+
+# uploaded files (receipts, W-9s) — dev local storage
+/uploads/

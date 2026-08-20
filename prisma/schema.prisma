@@ -65,6 +65,19 @@ model Business {
   accounts       Account[]
   journalEntries JournalEntry[]
   auditLogs      AuditLog[]
+  // Phase 2 — per-business sequential document numbering.
+  nextInvoiceNumber  Int @default(1)
+  nextEstimateNumber Int @default(1)
+  customers         Customer[]
+  vendors           Vendor[]
+  taxRates          TaxRate[]
+  invoices          Invoice[]
+  payments          Payment[]
+  estimates         Estimate[]
+  expenses          Expense[]
+  storedFiles       StoredFile[]
+  recurringInvoices RecurringInvoice[]
+  mileageEntries    MileageEntry[]
 
   @@map("businesses")
 }
@@ -157,10 +170,14 @@ enum EntryStatus {
   @@map("entry_status")
 }
 
-// Provenance of an entry; later phases add INVOICE, EXPENSE, BANK_IMPORT, etc.
+// Provenance of an entry.
 enum EntrySource {
   MANUAL
   SYSTEM
+  INVOICE
+  PAYMENT
+  EXPENSE
+  BANK_IMPORT
 
   @@map("entry_source")
 }
@@ -256,4 +273,339 @@ model AuditLog {
   @@index([businessId, createdAt])
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+// ===========================================================================
+// Phase 2 — Invoicing & expenses
+// ===========================================================================
+
+model Customer {
+  id         String   @id @default(cuid())
+  businessId String
+  name       String
+  email      String?
+  address    String?
+  // Preferred invoicing currency; null = business functional currency.
+  currency   String?
+  notes      String?
+  isArchived Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business  Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invoices  Invoice[]
+  estimates Estimate[]
+  recurringInvoices RecurringInvoice[]
+
+  @@index([businessId, name])
+  @@map("customers")
+}
+
+// Minimal vendor record for expense tracking; Phase 4 adds W-9/1099 fields.
+model Vendor {
+  id         String   @id @default(cuid())
+  businessId String
+  name       String
+  email      String?
+  address    String?
+  notes      String?
+  isArchived Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+
+  @@index([businessId, name])
+  @@map("vendors")
+}
+
+// Sales tax rate. Rate stored in parts-per-million so 8.875% = 88750 ppm —
+// integer math only, no floats.
+model TaxRate {
+  id                 String  @id @default(cuid())
+  businessId         String
+  name               String
+  jurisdiction       String?
+  ratePpm            Int
+  // Liability account credited when this tax is collected on an invoice.
+  liabilityAccountId String
+  isArchived         Boolean @default(false)
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invoiceLines  InvoiceLine[]
+  estimateLines EstimateLine[]
+
+  @@map("tax_rates")
+}
+
+enum InvoiceStatus {
+  DRAFT   // editable, not yet on the books
+  OPEN    // approved & posted to the ledger (A/R), awaiting payment
+  PAID
+  VOID
+
+  @@map("invoice_status")
+}
+
+model Invoice {
+  id           String        @id @default(cuid())
+  businessId   String
+  customerId   String
+  number       Int
+  status       InvoiceStatus @default(DRAFT)
+  issueDate    DateTime      @db.Date
+  dueDate      DateTime      @db.Date
+  currency     String
+  exchangeRate Decimal       @default(1) @db.Decimal(20, 10)
+  memo         String?
+  terms        String?
+  // Denormalized totals in invoice-currency minor units (derived from lines
+  // at approval; drafts recompute on edit).
+  subtotal     BigInt        @default(0)
+  taxTotal     BigInt        @default(0)
+  total        BigInt        @default(0)
+  // Ledger linkage: entry posted at approval; reversal entry if voided.
+  journalEntryId     String? @unique
+  voidJournalEntryId String? @unique
+  // Public client-portal token (unguessable).
+  portalToken  String        @unique @default(cuid())
+  estimateId   String?       @unique
+  recurringInvoiceId String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id])
+  lines    InvoiceLine[]
+  payments Payment[]
+  estimate Estimate? @relation(fields: [estimateId], references: [id])
+  recurringInvoice RecurringInvoice? @relation(fields: [recurringInvoiceId], references: [id])
+
+  @@unique([businessId, number])
+  @@index([businessId, status])
+  @@index([businessId, dueDate])
+  @@map("invoices")
+}
+
+model InvoiceLine {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  lineNo      Int
+  description String
+  // Quantity in thousandths (2.5 units = 2500) — integer math only.
+  quantityMilli BigInt @default(1000)
+  // Unit price in invoice-currency minor units.
+  unitPrice   BigInt
+  // quantity × unitPrice, rounded half-up, minor units.
+  amount      BigInt
+  incomeAccountId String
+  taxRateId   String?
+  taxAmount   BigInt  @default(0)
+
+  invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  taxRate TaxRate? @relation(fields: [taxRateId], references: [id])
+
+  @@unique([invoiceId, lineNo])
+  @@map("invoice_lines")
+}
+
+enum PaymentMethod {
+  CASH
+  CHECK
+  ACH
+  WIRE
+  // Card / third-party network payments are excluded from 1099 totals
+  // (1099-K territory, reported by the processor) — tracked from Phase 4.
+  CARD
+  OTHER
+
+  @@map("payment_method")
+}
+
+model Payment {
+  id         String        @id @default(cuid())
+  businessId String
+  invoiceId  String
+  date       DateTime      @db.Date
+  // Invoice-currency minor units.
+  amount     BigInt
+  method     PaymentMethod
+  memo       String?
+  // Bank/cash account debited.
+  depositAccountId String
+  journalEntryId   String? @unique
+  createdAt  DateTime      @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invoice  Invoice  @relation(fields: [invoiceId], references: [id])
+
+  @@index([businessId, date])
+  @@map("payments")
+}
+
+enum EstimateStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  DECLINED
+  CONVERTED
+
+  @@map("estimate_status")
+}
+
+model Estimate {
+  id           String         @id @default(cuid())
+  businessId   String
+  customerId   String
+  number       Int
+  status       EstimateStatus @default(DRAFT)
+  issueDate    DateTime       @db.Date
+  expiryDate   DateTime?      @db.Date
+  currency     String
+  exchangeRate Decimal        @default(1) @db.Decimal(20, 10)
+  memo         String?
+  subtotal     BigInt         @default(0)
+  taxTotal     BigInt         @default(0)
+  total        BigInt         @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id])
+  lines    EstimateLine[]
+  convertedInvoice Invoice?
+
+  @@unique([businessId, number])
+  @@map("estimates")
+}
+
+model EstimateLine {
+  id          String  @id @default(cuid())
+  estimateId  String
+  lineNo      Int
+  description String
+  quantityMilli BigInt @default(1000)
+  unitPrice   BigInt
+  amount      BigInt
+  incomeAccountId String
+  taxRateId   String?
+  taxAmount   BigInt  @default(0)
+
+  estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  taxRate  TaxRate? @relation(fields: [taxRateId], references: [id])
+
+  @@unique([estimateId, lineNo])
+  @@map("estimate_lines")
+}
+
+model Expense {
+  id           String        @id @default(cuid())
+  businessId   String
+  vendorId     String?
+  date         DateTime      @db.Date
+  memo         String
+  currency     String
+  exchangeRate Decimal       @default(1) @db.Decimal(20, 10)
+  // Account credited (bank / cash / credit card payable).
+  paymentAccountId String
+  paymentMethod    PaymentMethod @default(OTHER)
+  total        BigInt        @default(0)
+  journalEntryId String?     @unique
+  receiptFileId  String?     @unique
+  createdAt    DateTime      @default(now())
+
+  business Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  vendor   Vendor?     @relation(fields: [vendorId], references: [id])
+  lines    ExpenseLine[]
+  receiptFile StoredFile? @relation(fields: [receiptFileId], references: [id])
+
+  @@index([businessId, date])
+  @@index([vendorId, date])
+  @@map("expenses")
+}
+
+model ExpenseLine {
+  id        String @id @default(cuid())
+  expenseId String
+  lineNo    Int
+  description String?
+  expenseAccountId String
+  amount    BigInt
+
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  @@unique([expenseId, lineNo])
+  @@map("expense_lines")
+}
+
+// Uploaded files (receipts now; W-9s and generated PDFs later). Bytes live in
+// the storage backend (local disk adapter in dev, S3-compatible in prod);
+// this row is the metadata + key.
+model StoredFile {
+  id         String   @id @default(cuid())
+  businessId String
+  key        String   @unique
+  filename   String
+  mimeType   String
+  size       Int
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  expense  Expense?
+
+  @@map("stored_files")
+}
+
+enum RecurrenceFrequency {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+
+  @@map("recurrence_frequency")
+}
+
+model RecurringInvoice {
+  id         String              @id @default(cuid())
+  businessId String
+  customerId String
+  frequency  RecurrenceFrequency
+  nextRunDate DateTime           @db.Date
+  endDate    DateTime?           @db.Date
+  // Snapshot of invoice fields applied on each run:
+  // { currency, exchangeRate, terms, memo, dueInDays,
+  //   lines: [{description, quantityMilli, unitPrice, incomeAccountId, taxRateId?}] }
+  template   Json
+  // If true the generated invoice is approved (posted to A/R) immediately;
+  // otherwise it lands as a draft for review.
+  autoApprove Boolean            @default(false)
+  isPaused   Boolean             @default(false)
+  createdAt  DateTime            @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id])
+  invoices Invoice[]
+
+  @@index([businessId, nextRunDate])
+  @@map("recurring_invoices")
+}
+
+model MileageEntry {
+  id         String   @id @default(cuid())
+  businessId String
+  date       DateTime @db.Date
+  // Distance in tenths of a mile (12.5 mi = 125).
+  milesTenths Int
+  // Deduction rate in cents-per-mile at time of entry (IRS standard mileage
+  // rate — configuration, not a constant; changes yearly).
+  ratePerMileCents Int
+  purpose    String
+  vehicle    String?
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, date])
+  @@map("mileage_entries")
 }

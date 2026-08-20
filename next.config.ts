@@ -1,7 +1,9 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // pdfkit ships .afm font data files that must be read from node_modules at
+  // runtime — bundling it breaks those reads.
+  serverExternalPackages: ['pdfkit'],
 };
 
 export default nextConfig;
