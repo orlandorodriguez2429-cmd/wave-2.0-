@@ -1,0 +1,37 @@
+# Wave 2.0 — one-command local run:
+#
+#   docker compose up
+#
+# then open http://localhost:3000 and sign in as
+#   demo@wave2.local / demo-password-123
+#
+# The DEV_ONLY encryption key below is fine for trying the app locally.
+# For anything real, override it:  ENCRYPTION_KEY=<32 bytes base64> docker compose up
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: wave
+      POSTGRES_PASSWORD: wave_dev_password
+      POSTGRES_DB: wave
+    volumes:
+      - wave-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wave -d wave"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://wave:wave_dev_password@db:5432/wave?schema=public
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-3Jze7fSYxvxXRtj1PWp3e3Mv7Xv7KvXGGzXieeNIFEk=}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  wave-pgdata:
