@@ -59,7 +59,7 @@ export function TxnRow({
           <button
             type="submit"
             disabled={pending}
-            className="rounded-md bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className="rounded-md bg-teal-600 px-3 py-1 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
           >
             {pending ? '…' : 'Categorize'}
           </button>
@@ -69,7 +69,7 @@ export function TxnRow({
             key={c.journalLineId}
             onClick={() => startTransition(() => matchTxnAction(txn.id, c.journalLineId))}
             disabled={busy}
-            className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+            className="rounded-md border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-medium text-teal-700 hover:bg-teal-100 disabled:opacity-50"
             title="Match to this existing ledger entry — no new entry is created"
           >
             Match: {c.label}

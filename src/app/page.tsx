@@ -37,16 +37,16 @@ export default async function Dashboard() {
   const payable = sumBy((r) => r.subtype === 'accounts_payable' || r.subtype === 'credit_card');
 
   const cards = [
-    { label: 'Cash & Bank', value: cash },
-    { label: `Net Income (FY from ${fyStart.toISOString().slice(0, 10)})`, value: pnl.netIncome },
-    { label: 'Accounts Receivable', value: receivable },
-    { label: 'Payables & Credit Cards', value: payable },
+    { label: 'Cash You Have', value: cash },
+    { label: 'Money Owed to You', value: receivable },
+    { label: 'Money You Owe', value: payable },
+    { label: `Profit (FY from ${fyStart.toISOString().slice(0, 10)})`, value: pnl.netIncome },
   ];
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold">{business.name}</h1>
+        <h1 className="text-2xl font-semibold text-[var(--wave-navy)]">{business.name}</h1>
         <p className="text-sm text-slate-500 mt-1">
           {business.accountingBasis === 'ACCRUAL' ? 'Accrual basis' : 'Cash basis'} · Functional currency {currency}
         </p>
@@ -54,19 +54,22 @@ export default async function Dashboard() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {cards.map((c) => (
-          <div key={c.label} className="rounded-lg border border-slate-200 bg-white p-4">
+          <div key={c.label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">{c.label}</p>
-            <p className={`mt-2 text-xl font-semibold tabular-nums ${c.value < 0n ? 'text-red-600' : ''}`}>
+            <p className={`mt-2 text-xl font-semibold tabular-nums ${c.value < 0n ? 'text-red-600' : 'text-[var(--wave-navy)]'}`}>
               {formatMoney(c.value, currency)}
             </p>
           </div>
         ))}
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white">
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <h2 className="font-medium">Recent journal entries</h2>
-          <Link href="/journal/new" className="text-sm font-medium text-blue-600 hover:underline">
+          <h2 className="font-medium text-[var(--wave-navy)]">Recent journal entries</h2>
+          <Link
+            href="/journal/new"
+            className="rounded-md bg-teal-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-600"
+          >
             + New entry
           </Link>
         </div>

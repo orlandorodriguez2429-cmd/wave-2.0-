@@ -42,9 +42,9 @@ export default function ReportsPage() {
           <Link
             key={r.href}
             href={r.href}
-            className="rounded-lg border border-slate-200 bg-white p-5 hover:border-blue-300 hover:shadow-sm"
+            className="rounded-lg border border-slate-200 bg-white p-5 hover:border-teal-300 hover:shadow-sm"
           >
-            <h2 className="font-medium text-blue-700">{r.title}</h2>
+            <h2 className="font-medium text-teal-700">{r.title}</h2>
             <p className="mt-2 text-sm text-slate-500">{r.desc}</p>
           </Link>
         ))}

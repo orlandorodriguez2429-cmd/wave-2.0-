@@ -78,7 +78,7 @@ export default async function PortalInvoicePage({ params }: { params: Promise<{ 
         </table>
 
         {invoice.status === 'OPEN' && balance > 0n && (
-          <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 space-y-2">
+          <div className="rounded-lg border border-teal-100 bg-teal-50 p-4 space-y-2">
             <PortalPayButton token={token} amountLabel={formatMoney(balance, invoice.currency)} />
             <p className="text-xs text-slate-500">
               Sandbox payment — records a card payment in the books. Stripe Checkout plugs in here in

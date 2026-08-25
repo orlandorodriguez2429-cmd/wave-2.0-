@@ -45,7 +45,7 @@ export default async function VendorsPage() {
             {vendors.map((v) => (
               <tr key={v.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50">
                 <td className="px-5 py-3">
-                  <a href={`/vendors/${v.id}`} className="font-medium text-blue-700 hover:underline">{v.name}</a>
+                  <a href={`/vendors/${v.id}`} className="font-medium text-teal-700 hover:underline">{v.name}</a>
                 </td>
                 <td className="px-3 py-3 text-slate-500">{v.email}</td>
                 <td className="px-3 py-3">

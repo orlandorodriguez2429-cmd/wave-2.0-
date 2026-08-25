@@ -56,26 +56,31 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
 
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-50 text-slate-900`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[var(--background)] text-slate-900`}>
         <div className="flex min-h-screen">
-          <aside className="w-60 shrink-0 border-r border-slate-200 bg-white flex flex-col">
-            <div className="px-5 py-5 border-b border-slate-100">
-              <Link href="/" className="text-lg font-semibold tracking-tight text-blue-700">
-                Wave&nbsp;2.0
-              </Link>
-              <p className="text-xs text-slate-400 mt-0.5">Small-business accounting</p>
+          <aside className="w-60 shrink-0 bg-[#0e2438] flex flex-col">
+            <div className="px-5 py-5 flex items-center gap-2">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-teal-500 text-[#0e2438] font-bold text-sm">
+                W
+              </span>
+              <div>
+                <Link href="/" className="text-base font-semibold tracking-tight text-white leading-none">
+                  Wave&nbsp;2.0
+                </Link>
+                <p className="text-[11px] text-slate-400 mt-0.5">Small-business accounting</p>
+              </div>
             </div>
-            <nav className="p-3 space-y-0.5 flex-1 overflow-y-auto">
+            <nav className="px-3 pb-3 space-y-0.5 flex-1 overflow-y-auto">
               {nav.map((item) =>
                 item.heading ? (
-                  <p key={item.label} className="px-3 pt-4 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <p key={item.label} className="px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                     {item.label}
                   </p>
                 ) : (
                   <Link
                     key={item.href}
                     href={item.href!}
-                    className="block rounded-md px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                    className="block rounded-md px-3 py-1.5 text-sm font-medium text-slate-300 hover:bg-white/10 hover:text-white border-l-2 border-transparent hover:border-teal-400"
                   >
                     {item.label}
                   </Link>

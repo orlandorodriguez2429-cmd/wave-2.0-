@@ -54,7 +54,7 @@ export default async function ProfitLossPage({
           <h1 className="text-2xl font-semibold">Profit &amp; Loss</h1>
           <p className="text-sm text-slate-500 mt-1">
             {from} → {to} · {currency} ·{' '}
-            <a href={`/reports/export/profit-loss?from=${from}&to=${to}`} className="text-blue-700 hover:underline">CSV</a>
+            <a href={`/reports/export/profit-loss?from=${from}&to=${to}`} className="text-teal-700 hover:underline">CSV</a>
           </p>
         </div>
         <DateRangeForm from={from} to={to} />
@@ -65,7 +65,7 @@ export default async function ProfitLossPage({
           <tbody>
             <Section section={pnl.income} currency={currency} />
             <Section section={pnl.cogs} currency={currency} />
-            <tr className="border-b border-slate-200 bg-blue-50/50">
+            <tr className="border-b border-slate-200 bg-teal-50/50">
               <td className="px-5 py-2.5 font-medium">Gross Profit</td>
               <td className="px-5 py-2.5 text-right tabular-nums font-medium">
                 {formatMoney(pnl.grossProfit, currency)}
