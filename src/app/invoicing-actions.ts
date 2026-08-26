@@ -17,6 +17,7 @@ import {
 } from '@/lib/invoicing/invoices';
 import { convertEstimateToInvoice, createEstimate, setEstimateStatus } from '@/lib/invoicing/estimates';
 import { createExpense, reverseExpense } from '@/lib/expenses';
+import { sendInvoiceReminder } from '@/lib/invoicing/reminders';
 import { storeUpload } from '@/lib/storage';
 import type { PaymentMethod } from '@/generated/prisma/enums';
 import type { ActionResult } from './actions';
@@ -236,6 +237,13 @@ export async function recordPaymentAction(_prev: ActionResult, formData: FormDat
   } catch (err) {
     return errorResult(err);
   }
+}
+
+export async function sendInvoiceReminderAction(invoiceId: string): Promise<void> {
+  const { business } = await requireContext('EMPLOYEE');
+  const result = await sendInvoiceReminder({ businessId: business.id, invoiceId });
+  if (!result.sent) throw new LedgerValidationError(result.reason ?? 'Could not send reminder.');
+  revalidatePath(`/invoices/${invoiceId}`);
 }
 
 // ---------------------------------------------------------------------------

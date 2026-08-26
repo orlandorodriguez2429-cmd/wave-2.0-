@@ -77,6 +77,7 @@ model Business {
   estimates         Estimate[]
   expenses          Expense[]
   bills             Bill[]
+  emailMessages     EmailMessage[]
   storedFiles       StoredFile[]
   recurringInvoices RecurringInvoice[]
   mileageEntries    MileageEntry[]
@@ -436,6 +437,7 @@ model Invoice {
   payments Payment[]
   estimate Estimate? @relation(fields: [estimateId], references: [id])
   recurringInvoice RecurringInvoice? @relation(fields: [recurringInvoiceId], references: [id])
+  emailMessages EmailMessage[]
 
   @@unique([businessId, number])
   @@index([businessId, status])
@@ -668,6 +670,36 @@ model BillPayment {
 
   @@index([businessId, date])
   @@map("bill_payments")
+}
+
+enum EmailKind {
+  INVOICE_REMINDER
+
+  @@map("email_kind")
+}
+
+// Every email the app sends (or would send) — the audit trail for reminders
+// and, later, receipt delivery. Sending goes through a pluggable
+// EmailProvider (src/lib/email/provider.ts): a console/log sandbox by
+// default, real SMTP behind env config — same pattern as bank feeds, invoice
+// payments, and e-file.
+model EmailMessage {
+  id                String    @id @default(cuid())
+  businessId        String
+  toEmail           String
+  subject           String
+  bodyText          String
+  kind              EmailKind
+  relatedInvoiceId  String?
+  providerName      String
+  providerMessageId String?
+  sentAt            DateTime  @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invoice  Invoice? @relation(fields: [relatedInvoiceId], references: [id])
+
+  @@index([businessId, relatedInvoiceId, sentAt])
+  @@map("email_messages")
 }
 
 // Uploaded files (receipts now; W-9s and generated PDFs later). Bytes live in

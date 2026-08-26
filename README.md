@@ -32,7 +32,7 @@ npm run dev                 # http://localhost:3000
 **Demo login:** `demo@wave2.local` / `demo-password-123`
 
 Background jobs (recurring invoices): `npx tsx scripts/run-jobs.ts` on a cron.
-Tests: `npx vitest run` (66 tests; integration tests hit `DATABASE_URL`).
+Tests: `npx vitest run` (70 tests; integration tests hit `DATABASE_URL`).
 
 ## Environment
 
@@ -42,6 +42,7 @@ Tests: `npx vitest run` (66 tests; integration tests hit `DATABASE_URL`).
 | `ENCRYPTION_KEY` | 32 bytes base64; AES-256-GCM for TINs, EINs, bank tokens. Sessions are HMAC-signed with a derived key. |
 | `EFILE_TRANSMITTER` | `mock` (sandbox provider, default) or `iris` (needs `IRIS_TCC` + credentials). |
 | `PLAID_CLIENT_ID` / `PLAID_SECRET` | Activates the real Plaid adapter (sandbox bank feed works without). |
+| `EMAIL_PROVIDER` | `console` (sandbox, default — logs and records the email, no network call) or `smtp` (needs `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM`). |
 
 ## Architecture notes
 
@@ -55,4 +56,4 @@ Tests: `npx vitest run` (66 tests; integration tests hit `DATABASE_URL`).
 
 ## What is sandboxed vs production-ready
 
-Real external integrations are behind adapters with working sandbox implementations: bank feeds (mock provider ↔ Plaid), invoice payments (sandbox portal button ↔ Stripe Checkout), e-file (mock transmitter ↔ provider API / IRIS A2A), file storage (local disk ↔ S3). Receipt OCR, W-2 payroll, and late fees/reminders delivery (email) are noted future work.
+Real external integrations are behind adapters with working sandbox implementations: bank feeds (mock provider ↔ Plaid), invoice payments (sandbox portal button ↔ Stripe Checkout), e-file (mock transmitter ↔ provider API / IRIS A2A), file storage (local disk ↔ S3), invoice reminders (console/log provider ↔ SMTP). Receipt OCR, W-2 payroll, and late fees (as opposed to reminders, which are implemented) are noted future work.
