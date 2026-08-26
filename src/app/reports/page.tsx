@@ -31,6 +31,11 @@ const reports = [
     title: 'Aged Receivables',
     desc: 'Outstanding invoice balances bucketed by how overdue they are.',
   },
+  {
+    href: '/reports/aged-payables',
+    title: 'Aged Payables',
+    desc: 'Outstanding bill balances bucketed by how overdue they are.',
+  },
 ];
 
 export default function ReportsPage() {
@@ -50,7 +55,7 @@ export default function ReportsPage() {
         ))}
       </div>
       <p className="text-sm text-slate-400">
-        Every report exports to CSV from its page. Aged Payables arrives with the bills module.
+        Every report exports to CSV from its page.
       </p>
     </div>
   );

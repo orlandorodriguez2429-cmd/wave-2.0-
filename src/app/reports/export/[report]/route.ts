@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentContext } from '@/lib/context';
 import { balanceSheet, profitAndLoss, trialBalance } from '@/lib/ledger/reports';
-import { agedReceivables, cashFlow, salesTaxReport } from '@/lib/ledger/more-reports';
+import { agedPayables, agedReceivables, cashFlow, salesTaxReport } from '@/lib/ledger/more-reports';
 import { formatAmount } from '@/lib/money';
 
 // CSV export for every report: /reports/export/<report>?from=&to=
@@ -95,6 +95,15 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ report: str
         ['Invoice', 'Customer', 'Due date', 'Bucket', `Balance (${cur})`],
         ...ar.rows.map((r) => [`#${r.number}`, r.customerName, r.dueDate, r.bucket, fmt(r.balance)]),
         ['TOTAL', '', '', '', fmt(ar.total)],
+      ];
+      break;
+    }
+    case 'aged-payables': {
+      const ap = await agedPayables(business.id, to);
+      rows = [
+        ['Bill', 'Vendor', 'Due date', 'Bucket', `Balance (${cur})`],
+        ...ap.rows.map((r) => [`#${r.number}`, r.vendorName, r.dueDate, r.bucket, fmt(r.balance)]),
+        ['TOTAL', '', '', '', fmt(ap.total)],
       ];
       break;
     }

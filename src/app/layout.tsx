@@ -22,6 +22,7 @@ const nav: Array<{ href?: string; label: string; heading?: boolean }> = [
   { href: '/customers', label: 'Customers' },
   { label: 'Purchases', heading: true },
   { href: '/expenses', label: 'Expenses' },
+  { href: '/bills', label: 'Bills' },
   { href: '/vendors', label: 'Vendors' },
   { href: '/mileage', label: 'Mileage' },
   { label: 'Contractors & 1099', heading: true },

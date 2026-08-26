@@ -68,6 +68,7 @@ model Business {
   // Phase 2 — per-business sequential document numbering.
   nextInvoiceNumber  Int @default(1)
   nextEstimateNumber Int @default(1)
+  nextBillNumber     Int @default(1)
   customers         Customer[]
   vendors           Vendor[]
   taxRates          TaxRate[]
@@ -75,6 +76,7 @@ model Business {
   payments          Payment[]
   estimates         Estimate[]
   expenses          Expense[]
+  bills             Bill[]
   storedFiles       StoredFile[]
   recurringInvoices RecurringInvoice[]
   mileageEntries    MileageEntry[]
@@ -199,6 +201,8 @@ enum EntrySource {
   PAYMENT
   EXPENSE
   BANK_IMPORT
+  BILL
+  BILL_PAYMENT
 
   @@map("entry_source")
 }
@@ -364,6 +368,7 @@ model Vendor {
 
   business Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
   expenses Expense[]
+  bills    Bill[]
   payments1099 VendorPayment[]
 
   @@index([businessId, name])
@@ -587,6 +592,82 @@ model ExpenseLine {
 
   @@unique([expenseId, lineNo])
   @@map("expense_lines")
+}
+
+enum BillStatus {
+  DRAFT   // editable, not yet on the books
+  OPEN    // approved & posted to the ledger (A/P), awaiting payment
+  PAID
+  VOID
+
+  @@map("bill_status")
+}
+
+// A vendor bill: enter-now-pay-later, as opposed to Expense which records a
+// payment made immediately. Approval posts Dr Expense / Cr Accounts Payable;
+// each payment posts Dr Accounts Payable / Cr Cash — the AP mirror of
+// Invoice/Payment. This is what makes Aged Payables possible.
+model Bill {
+  id           String     @id @default(cuid())
+  businessId   String
+  vendorId     String
+  number       Int
+  status       BillStatus @default(DRAFT)
+  billDate     DateTime   @db.Date
+  dueDate      DateTime   @db.Date
+  currency     String
+  exchangeRate Decimal    @default(1) @db.Decimal(20, 10)
+  memo         String?
+  total        BigInt     @default(0)
+  // Ledger linkage: entry posted at approval; reversal entry if voided.
+  journalEntryId     String? @unique
+  voidJournalEntryId String? @unique
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  business Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  vendor   Vendor      @relation(fields: [vendorId], references: [id])
+  lines    BillLine[]
+  payments BillPayment[]
+
+  @@unique([businessId, number])
+  @@index([businessId, status])
+  @@index([businessId, dueDate])
+  @@map("bills")
+}
+
+model BillLine {
+  id          String  @id @default(cuid())
+  billId      String
+  lineNo      Int
+  description String?
+  expenseAccountId String
+  amount      BigInt
+
+  bill Bill @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  @@unique([billId, lineNo])
+  @@map("bill_lines")
+}
+
+model BillPayment {
+  id         String        @id @default(cuid())
+  businessId String
+  billId     String
+  date       DateTime      @db.Date
+  // Bill-currency minor units.
+  amount     BigInt
+  method     PaymentMethod
+  memo       String?
+  // Bank/cash account credited.
+  paymentAccountId String
+  journalEntryId   String? @unique
+  createdAt  DateTime      @default(now())
+
+  bill Bill @relation(fields: [billId], references: [id])
+
+  @@index([businessId, date])
+  @@map("bill_payments")
 }
 
 // Uploaded files (receipts now; W-9s and generated PDFs later). Bytes live in

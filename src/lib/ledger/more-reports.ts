@@ -169,3 +169,42 @@ export async function agedReceivables(businessId: string, asOf: Date) {
   const total = rows.reduce((s, r) => s + r.balance, 0n);
   return { rows: rows.sort((a, b) => a.dueDate.localeCompare(b.dueDate)), buckets, total };
 }
+
+// ---------------------------------------------------------------------------
+// Aged payables
+// ---------------------------------------------------------------------------
+
+export interface AgedPayableRow {
+  billId: string;
+  number: number;
+  vendorName: string;
+  dueDate: string;
+  balance: bigint;
+  bucket: 'current' | '1-30' | '31-60' | '61-90' | '90+';
+}
+
+export async function agedPayables(businessId: string, asOf: Date) {
+  const bills = await prisma.bill.findMany({
+    where: { businessId, status: 'OPEN' },
+    include: { vendor: true, payments: true },
+  });
+  const rows: AgedPayableRow[] = [];
+  for (const bill of bills) {
+    const balance = bill.total - bill.payments.reduce((s, p) => s + p.amount, 0n);
+    if (balance <= 0n) continue;
+    const daysOver = Math.floor((asOf.getTime() - bill.dueDate.getTime()) / 86400_000);
+    const bucket = daysOver <= 0 ? 'current' : daysOver <= 30 ? '1-30' : daysOver <= 60 ? '31-60' : daysOver <= 90 ? '61-90' : '90+';
+    rows.push({
+      billId: bill.id,
+      number: bill.number,
+      vendorName: bill.vendor.name,
+      dueDate: bill.dueDate.toISOString().slice(0, 10),
+      balance,
+      bucket,
+    });
+  }
+  const buckets = { current: 0n, '1-30': 0n, '31-60': 0n, '61-90': 0n, '90+': 0n };
+  for (const r of rows) buckets[r.bucket] += r.balance;
+  const total = rows.reduce((s, r) => s + r.balance, 0n);
+  return { rows: rows.sort((a, b) => a.dueDate.localeCompare(b.dueDate)), buckets, total };
+}
