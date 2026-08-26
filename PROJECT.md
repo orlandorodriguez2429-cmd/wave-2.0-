@@ -155,6 +155,54 @@ shipping, rules shift year to year):
   since they change yearly — and tell me explicitly if you're relying on IRS
   data you haven't verified is current.
 
+## Phase 7 — Point of Sale (Clover replacement)
+
+Added after phases 1–6: the goal here is to give clients a reason to drop a
+Clover terminal entirely, not just a nicer back office. That means the POS
+has to work as a real in-person checkout, not a "sales" tab bolted onto the
+accounting UI.
+
+- **Item & service catalog**: SKU, price, tax rate, category, modifiers
+  (size/add-ons), variable-price items, active/inactive toggle. Every catalog
+  item maps to an income account in the chart of accounts so a sale posts a
+  real journal entry (Cash/Card Clearing debit, Sales Tax Payable credit,
+  Income credit) — no separate POS ledger.
+- **Register / checkout screen**: touch-friendly, large tap targets, works on
+  a tablet. Build an order (tap items or scan barcode), apply discounts,
+  split tenders (part card / part cash), tips (%, custom, or none), void a
+  line before tender, hold/recall an order.
+- **Card processing**: this is Clover's actual product — it's a payment
+  terminal. Use Stripe Terminal (already have Stripe Connect from the
+  invoicing side) for card-present transactions: tap/insert/swipe via a
+  connected reader (BBPOS/WisePad-class hardware), EMV + NFC (Apple/Google
+  Pay), signature/PIN capture where required. This has to work **offline**
+  for the common "wifi drops mid-lunch-rush" case — queue and settle when
+  connectivity returns, never lose a completed sale.
+- **Terminal/device management**: register and name individual card readers
+  per business location, see online/offline status, assign a reader to a
+  register/till, deauthorize a lost or replaced device.
+- **Receipts**: print (via a connected receipt printer or the reader's
+  built-in printer), email, or text a digital receipt; itemized, tax shown,
+  tip line if applicable.
+- **Cash drawer & shift management**: open/close a till with a starting cash
+  count, track cash in/out during a shift, end-of-shift reconciliation
+  (expected vs. counted cash), per-employee shift reports.
+- **Refunds & voids**: full or partial refund against a specific sale (not a
+  standalone negative sale), reason code, refund to original tender when
+  possible, all of it posting reversing journal entries — same
+  never-silently-edit rule as the rest of the ledger.
+- **Staff accounts & PINs**: lightweight in-store login (PIN or badge tap)
+  separate from full app login, scoped to "can operate the register" — not
+  the owner/accountant/employee roles used for the back office.
+- **Multi-location**: one business, multiple physical registers/locations,
+  sales roll up into the same ledger with a location dimension on each
+  transaction for location-level P&L.
+- Every POS sale is the same kind of ledger entry as an invoice payment —
+  don't build a parallel accounting path. The whole point of beating Clover
+  here is that the books stay correct automatically instead of needing a
+  reconciliation step between "what Clover says we sold" and "what's in the
+  accounting software."
+
 ## Suggested build order
 
 1. **Phase 1 — Ledger core**: chart of accounts, double-entry engine, manual
@@ -168,6 +216,9 @@ shipping, rules shift year to year):
 5. **Phase 5 — 1099 generation & e-file**: PDF generation, third-party
    e-file provider integration, recipient delivery, corrections.
 6. **Phase 6 — Reports, multi-entity, roles, polish.**
+7. **Phase 7 — Point of Sale**: item catalog, register/checkout, Stripe
+   Terminal card processing with offline queueing, receipts, cash
+   drawer/shifts, refunds, staff PINs, multi-location — see above.
 
 Start by proposing the concrete data model (Prisma/Drizzle schema) for Phase 1
 and ask me anything you need clarified before writing code.
