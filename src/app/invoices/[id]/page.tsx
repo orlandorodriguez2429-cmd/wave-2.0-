@@ -8,6 +8,7 @@ import { StatusChip } from '@/components/status-chip';
 import { ActionButton } from '@/components/action-button';
 import { SimpleRecordForm } from '@/components/simple-record-form';
 import {
+  applyLateFeeAction,
   approveInvoiceAction,
   deleteDraftInvoiceAction,
   makeRecurringAction,
@@ -15,6 +16,7 @@ import {
   sendInvoiceReminderAction,
   voidInvoiceAction,
 } from '@/app/invoicing-actions';
+import { checkLateFeeEligibility } from '@/lib/invoicing/latefees';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,9 +32,13 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       recurringInvoice: true,
       estimate: { select: { id: true, number: true } },
       emailMessages: { orderBy: { sentAt: 'desc' } },
+      lateFeeCharges: true,
     },
   });
   if (!invoice || invoice.businessId !== business.id) notFound();
+
+  const lateFeeEligibility =
+    invoice.status === 'OPEN' ? await checkLateFeeEligibility({ businessId: business.id, invoiceId: invoice.id }) : null;
 
   const entryIds = [invoice.journalEntryId, invoice.voidJournalEntryId].filter((x): x is string => !!x);
   const entries = await prisma.journalEntry.findMany({
@@ -102,6 +108,12 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           {invoice.status === 'OPEN' && (
             <ActionButton action={sendInvoiceReminderAction.bind(null, invoice.id)} label="Send reminder" />
           )}
+          {lateFeeEligibility?.eligible && (
+            <ActionButton
+              action={applyLateFeeAction.bind(null, invoice.id)}
+              label={`Apply late fee (${formatMoney(lateFeeEligibility.feeAmount!, invoice.currency)})`}
+            />
+          )}
           {invoice.status === 'OPEN' && invoice.payments.length === 0 && (
             <ActionButton action={voidInvoiceAction.bind(null, invoice.id)} label="Void…" confirmLabel="Confirm void" variant="danger" />
           )}
@@ -166,6 +178,23 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                   <td className="px-3 py-2.5">{p.method}</td>
                   <td className="px-3 py-2.5 text-slate-500">{p.memo}</td>
                   <td className="px-5 py-2.5 text-right tabular-nums">{formatMoney(p.amount, invoice.currency)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {invoice.lateFeeCharges.length > 0 && (
+        <div className="rounded-lg border border-slate-200 bg-white">
+          <h2 className="px-5 py-3 border-b border-slate-100 font-medium">Late fees</h2>
+          <table className="w-full text-sm">
+            <tbody>
+              {invoice.lateFeeCharges.map((c) => (
+                <tr key={c.id} className="border-b border-slate-50 last:border-0">
+                  <td className="px-5 py-2.5 text-slate-500">{c.appliedAt.toISOString().slice(0, 10)}</td>
+                  <td className="px-3 py-2.5 text-slate-500">One-time, added to invoice total</td>
+                  <td className="px-5 py-2.5 text-right tabular-nums">{formatMoney(c.amount, invoice.currency)}</td>
                 </tr>
               ))}
             </tbody>

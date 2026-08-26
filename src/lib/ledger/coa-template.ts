@@ -44,6 +44,7 @@ export const STANDARD_COA: CoaTemplateAccount[] = [
   { code: '4000', name: 'Sales', type: 'INCOME', subtype: 'operating_income', isSystem: true },
   { code: '4100', name: 'Service Revenue', type: 'INCOME', subtype: 'operating_income' },
   { code: '4900', name: 'Other Income', type: 'INCOME', subtype: 'other_income' },
+  { code: '4910', name: 'Late Fee Income', type: 'INCOME', subtype: 'late_fee_income', isSystem: true },
 
   // Cost of goods sold (expense subtype so P&L can show gross profit)
   { code: '5000', name: 'Cost of Goods Sold', type: 'EXPENSE', subtype: 'cogs' },

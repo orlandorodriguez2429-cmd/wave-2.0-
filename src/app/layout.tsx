@@ -41,6 +41,7 @@ const nav: Array<{ href?: string; label: string; heading?: boolean }> = [
   { href: '/close', label: 'Close the Books' },
   { href: '/audit', label: 'Audit Log' },
   { label: 'Settings', heading: true },
+  { href: '/settings/invoicing', label: 'Invoicing' },
   { href: '/settings/team', label: 'Team & API' },
 ];
 

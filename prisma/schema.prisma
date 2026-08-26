@@ -56,6 +56,12 @@ model Business {
   // 1–12; month the fiscal year starts (1 = January).
   fiscalYearStartMonth Int      @default(1)
   accountingBasis      AccountingBasis @default(ACCRUAL)
+  // Late fees: parts-per-million like TaxRate.ratePpm (8.875% = 88750), null
+  // = disabled. One-time per invoice (not compounding), assessed once it is
+  // this many days past due. Configurable per business, never a code
+  // constant — same rule as everything else money-shaped in this app.
+  lateFeePercentagePpm Int?
+  lateFeeGraceDays     Int      @default(0)
   // Per-business sequential journal entry numbering; bumped inside the
   // posting transaction so numbers are gapless and race-free.
   nextEntryNumber      Int      @default(1)
@@ -78,6 +84,7 @@ model Business {
   expenses          Expense[]
   bills             Bill[]
   emailMessages     EmailMessage[]
+  lateFeeCharges    LateFeeCharge[]
   storedFiles       StoredFile[]
   recurringInvoices RecurringInvoice[]
   mileageEntries    MileageEntry[]
@@ -204,6 +211,7 @@ enum EntrySource {
   BANK_IMPORT
   BILL
   BILL_PAYMENT
+  LATE_FEE
 
   @@map("entry_source")
 }
@@ -438,11 +446,31 @@ model Invoice {
   estimate Estimate? @relation(fields: [estimateId], references: [id])
   recurringInvoice RecurringInvoice? @relation(fields: [recurringInvoiceId], references: [id])
   emailMessages EmailMessage[]
+  lateFeeCharges LateFeeCharge[]
 
   @@unique([businessId, number])
   @@index([businessId, status])
   @@index([businessId, dueDate])
   @@map("invoices")
+}
+
+// A late fee assessed against one invoice — at most one per invoice
+// (one-time, not compounding). Posts Dr Accounts Receivable / Cr Late Fee
+// Income and bumps the invoice's total, so existing balance/payment logic
+// needs no changes to account for it.
+model LateFeeCharge {
+  id             String   @id @default(cuid())
+  businessId     String
+  invoiceId      String
+  amount         BigInt
+  journalEntryId String   @unique
+  appliedAt      DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invoice  Invoice  @relation(fields: [invoiceId], references: [id])
+
+  @@unique([invoiceId])
+  @@map("late_fee_charges")
 }
 
 model InvoiceLine {
