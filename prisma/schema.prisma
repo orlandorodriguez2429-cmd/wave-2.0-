@@ -109,6 +109,9 @@ model Business {
   periodCloses         PeriodClose[]
   apiTokens            ApiToken[]
   webhookSubscriptions WebhookSubscription[]
+  products             Product[]
+  checkouts            Checkout[]
+  employees            Employee[]
 
   @@map("businesses")
 }
@@ -212,6 +215,7 @@ enum EntrySource {
   BILL
   BILL_PAYMENT
   LATE_FEE
+  CHECKOUT
 
   @@map("entry_source")
 }
@@ -1165,4 +1169,113 @@ model WebhookSubscription {
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@map("webhook_subscriptions")
+}
+
+// ---------------------------------------------------------------------------
+// Products & Services catalog
+// ---------------------------------------------------------------------------
+
+// A reusable price-list entry so invoicing/billing doesn't require re-typing
+// price and income account every time. Not yet wired into the invoice/bill
+// line editors as a picker — this is the catalog itself.
+model Product {
+  id              String   @id @default(cuid())
+  businessId      String
+  name            String
+  description     String?
+  sku             String?
+  unitPrice       BigInt   @default(0)
+  incomeAccountId String
+  isArchived      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, name])
+  @@map("products")
+}
+
+// ---------------------------------------------------------------------------
+// Checkouts (standalone payment links, not tied to an invoice)
+// ---------------------------------------------------------------------------
+
+enum CheckoutStatus {
+  OPEN
+  PAID
+  VOID
+
+  @@map("checkout_status")
+}
+
+model Checkout {
+  id              String         @id @default(cuid())
+  businessId      String
+  token           String         @unique @default(cuid())
+  description     String
+  amount          BigInt
+  currency        String
+  incomeAccountId String
+  status          CheckoutStatus @default(OPEN)
+  payerName       String?
+  paidAt          DateTime?
+  depositAccountId String?
+  journalEntryId  String?        @unique
+  createdAt       DateTime       @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, status])
+  @@map("checkouts")
+}
+
+// ---------------------------------------------------------------------------
+// Payroll-lite: employee directory + timesheets.
+// ---------------------------------------------------------------------------
+//
+// No wage/tax calculation engine here — real W-2 payroll runs, tax
+// withholding, and direct deposit need a licensed payroll-tax provider this
+// project doesn't have (see README). This is the honest subset: who your
+// employees are, and hours worked, ready to hand to a provider later.
+
+enum EmployeeStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("employee_status")
+}
+
+model Employee {
+  id         String         @id @default(cuid())
+  businessId String
+  name       String
+  email      String?
+  title      String?
+  // Free-text pay basis ("hourly" / "salary") — display only, no computation.
+  payType    String         @default("hourly")
+  // Hourly rate or annual salary in minor units, display only.
+  rate       BigInt         @default(0)
+  startDate  DateTime?      @db.Date
+  status     EmployeeStatus @default(ACTIVE)
+  createdAt  DateTime       @default(now())
+
+  business   Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  timesheets Timesheet[]
+
+  @@index([businessId, name])
+  @@map("employees")
+}
+
+model Timesheet {
+  id         String   @id @default(cuid())
+  businessId String
+  employeeId String
+  weekStart  DateTime @db.Date
+  hours      Decimal  @db.Decimal(6, 2)
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, employeeId, weekStart])
+  @@map("timesheets")
 }

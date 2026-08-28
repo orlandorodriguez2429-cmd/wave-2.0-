@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 
 type Item = { href: string; label: string; badge?: string };
@@ -13,6 +14,23 @@ const createLinks: Item[] = [
   { href: '/journal/new', label: 'Journal transaction' },
 ];
 
+const salesLinks: Item[] = [
+  { href: '/estimates', label: 'Estimates' },
+  { href: '/invoices', label: 'Invoices' },
+  { href: '/settings/payments', label: 'Payments Setup' },
+  { href: '/invoices/recurring', label: 'Recurring Invoices' },
+  { href: '/checkouts', label: 'Checkouts' },
+  { href: '/customers/statements', label: 'Customer Statements' },
+  { href: '/customers', label: 'Customers' },
+  { href: '/products', label: 'Products & Services' },
+];
+
+const purchasesLinks: Item[] = [
+  { href: '/bills', label: 'Bills' },
+  { href: '/vendors', label: 'Vendors' },
+  { href: '/products', label: 'Products & Services' },
+];
+
 const accountingLinks: Item[] = [
   { href: '/journal', label: 'Transactions' },
   { href: '/accounting/tags', label: 'Tags', badge: 'New' },
@@ -22,9 +40,32 @@ const accountingLinks: Item[] = [
   { href: '/accounting/hire-a-bookkeeper', label: 'Hire a Bookkeeper' },
 ];
 
+const bankingLinks: Item[] = [
+  { href: '/banking', label: 'Connected Accounts' },
+  { href: '/banking/payouts', label: 'Payouts' },
+  { href: '/banking/insurance', label: 'Insurance' },
+];
+
+const payrollLinks: Item[] = [
+  { href: '/payroll', label: 'Payroll Dashboard' },
+  { href: '/payroll/employees', label: 'Employees' },
+  { href: '/payroll/timesheets', label: 'Payroll Timesheets' },
+  { href: '/payroll/transactions', label: 'Payroll Transactions' },
+  { href: '/payroll/taxes', label: 'Taxes' },
+  { href: '/payroll/tax-forms', label: 'Tax Forms' },
+];
+
 export function SidebarNav() {
-  const [accountingOpen, setAccountingOpen] = useState(true);
+  const pathname = usePathname();
   const [createOpen, setCreateOpen] = useState(false);
+  const [open, setOpen] = useState({
+    sales: true,
+    purchases: false,
+    accounting: false,
+    banking: false,
+    payroll: false,
+  });
+  const toggle = (key: keyof typeof open) => setOpen((prev) => ({ ...prev, [key]: !prev[key] }));
 
   return (
     <nav className="px-3 pb-3 space-y-0.5 flex-1 overflow-y-auto">
@@ -51,47 +92,68 @@ export function SidebarNav() {
         )}
       </div>
 
-      <TopLink href="/" label="Dashboard" />
-      <TopLink href="/sales" label="Sales & Payments" />
-      <TopLink href="/purchases" label="Purchases" />
-      <TopLink href="/receipts" label="Receipts" />
+      <TopLink href="/" label="Dashboard" active={pathname === '/'} />
 
-      <button
-        onClick={() => setAccountingOpen((v) => !v)}
-        className="w-full flex items-center justify-between rounded-md px-3 py-1.5 text-sm font-medium text-slate-300 hover:bg-white/10 hover:text-white border-l-2 border-transparent hover:border-teal-400"
-      >
-        Accounting
-        <span className="text-xs text-slate-500">{accountingOpen ? '▾' : '▸'}</span>
-      </button>
-      {accountingOpen && (
-        <div className="ml-3 space-y-0.5 border-l border-white/10 pl-2">
-          {accountingLinks.map((l) => (
-            <TopLink key={l.href} href={l.href} label={l.label} badge={l.badge} small />
-          ))}
-        </div>
-      )}
-
-      <TopLink href="/banking" label="Banking" />
-      <TopLink href="/payroll" label="Payroll" />
-      <TopLink href="/reports" label="Reports" />
-      <TopLink href="/advisors" label="Wave Advisors" />
-      <TopLink href="/tax-filing" label="Tax filing" />
-      <TopLink href="/perks" label="Perks" badge="New" />
+      <Section title="Sales & Payments" open={open.sales} onToggle={() => toggle('sales')} links={salesLinks} pathname={pathname} />
+      <Section title="Purchases" open={open.purchases} onToggle={() => toggle('purchases')} links={purchasesLinks} pathname={pathname} />
+      <TopLink href="/receipts" label="Receipts" active={pathname === '/receipts'} />
+      <Section title="Accounting" open={open.accounting} onToggle={() => toggle('accounting')} links={accountingLinks} pathname={pathname} />
+      <Section title="Banking" open={open.banking} onToggle={() => toggle('banking')} links={bankingLinks} pathname={pathname} />
+      <Section title="Payroll" open={open.payroll} onToggle={() => toggle('payroll')} links={payrollLinks} pathname={pathname} />
+      <TopLink href="/reports" label="Reports" active={pathname === '/reports'} />
+      <TopLink href="/advisors" label="Wave Advisors" active={pathname === '/advisors'} />
+      <TopLink href="/tax-filing" label="Tax filing" active={pathname?.startsWith('/tax-filing')} />
+      <TopLink href="/perks" label="Perks" badge="New" active={pathname === '/perks'} />
 
       <p className="px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Settings</p>
-      <TopLink href="/settings/invoicing" label="Invoicing" small />
-      <TopLink href="/settings/team" label="Team & API" small />
+      <TopLink href="/settings/invoicing" label="Invoicing" small active={pathname === '/settings/invoicing'} />
+      <TopLink href="/settings/team" label="Team & API" small active={pathname === '/settings/team'} />
     </nav>
   );
 }
 
-function TopLink({ href, label, badge, small }: Item & { small?: boolean }) {
+function Section({
+  title,
+  open,
+  onToggle,
+  links,
+  pathname,
+}: {
+  title: string;
+  open: boolean;
+  onToggle: () => void;
+  links: Item[];
+  pathname: string | null;
+}) {
+  return (
+    <>
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between rounded-md px-3 py-1.5 text-sm font-medium text-slate-300 hover:bg-white/10 hover:text-white border-l-2 border-transparent hover:border-teal-400"
+      >
+        {title}
+        <span className="text-xs text-slate-500">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <div className="ml-3 space-y-0.5 border-l border-white/10 pl-2">
+          {links.map((l) => (
+            <TopLink key={l.href} href={l.href} label={l.label} badge={l.badge} small active={pathname === l.href} />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function TopLink({ href, label, badge, small, active }: Item & { small?: boolean; active?: boolean }) {
   return (
     <Link
       href={href}
       className={`flex items-center justify-between rounded-md px-3 py-1.5 ${
         small ? 'text-[13px]' : 'text-sm'
-      } font-medium text-slate-300 hover:bg-white/10 hover:text-white border-l-2 border-transparent hover:border-teal-400`}
+      } font-medium ${active ? 'bg-[#16324a] text-white' : 'text-slate-300'} hover:bg-white/10 hover:text-white border-l-2 ${
+        active ? 'border-teal-400' : 'border-transparent'
+      } hover:border-teal-400`}
     >
       <span>{label}</span>
       {badge && (
