@@ -20,7 +20,7 @@ export default async function InvoicesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Invoices</h1>
-        <Link href="/invoices/new" className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+        <Link href="/invoices/new" className="rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
           + New invoice
         </Link>
       </div>
@@ -44,7 +44,7 @@ export default async function InvoicesPage() {
               return (
                 <tr key={inv.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50">
                   <td className="px-5 py-3">
-                    <Link href={`/invoices/${inv.id}`} className="font-medium text-blue-700 hover:underline">
+                    <Link href={`/invoices/${inv.id}`} className="font-medium text-teal-700 hover:underline">
                       #{inv.number}
                     </Link>
                   </td>

@@ -56,6 +56,12 @@ model Business {
   // 1–12; month the fiscal year starts (1 = January).
   fiscalYearStartMonth Int      @default(1)
   accountingBasis      AccountingBasis @default(ACCRUAL)
+  // Late fees: parts-per-million like TaxRate.ratePpm (8.875% = 88750), null
+  // = disabled. One-time per invoice (not compounding), assessed once it is
+  // this many days past due. Configurable per business, never a code
+  // constant — same rule as everything else money-shaped in this app.
+  lateFeePercentagePpm Int?
+  lateFeeGraceDays     Int      @default(0)
   // Per-business sequential journal entry numbering; bumped inside the
   // posting transaction so numbers are gapless and race-free.
   nextEntryNumber      Int      @default(1)
@@ -68,6 +74,7 @@ model Business {
   // Phase 2 — per-business sequential document numbering.
   nextInvoiceNumber  Int @default(1)
   nextEstimateNumber Int @default(1)
+  nextBillNumber     Int @default(1)
   customers         Customer[]
   vendors           Vendor[]
   taxRates          TaxRate[]
@@ -75,6 +82,9 @@ model Business {
   payments          Payment[]
   estimates         Estimate[]
   expenses          Expense[]
+  bills             Bill[]
+  emailMessages     EmailMessage[]
+  lateFeeCharges    LateFeeCharge[]
   storedFiles       StoredFile[]
   recurringInvoices RecurringInvoice[]
   mileageEntries    MileageEntry[]
@@ -99,6 +109,9 @@ model Business {
   periodCloses         PeriodClose[]
   apiTokens            ApiToken[]
   webhookSubscriptions WebhookSubscription[]
+  products             Product[]
+  checkouts            Checkout[]
+  employees            Employee[]
 
   @@map("businesses")
 }
@@ -199,6 +212,10 @@ enum EntrySource {
   PAYMENT
   EXPENSE
   BANK_IMPORT
+  BILL
+  BILL_PAYMENT
+  LATE_FEE
+  CHECKOUT
 
   @@map("entry_source")
 }
@@ -364,6 +381,7 @@ model Vendor {
 
   business Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
   expenses Expense[]
+  bills    Bill[]
   payments1099 VendorPayment[]
 
   @@index([businessId, name])
@@ -431,11 +449,32 @@ model Invoice {
   payments Payment[]
   estimate Estimate? @relation(fields: [estimateId], references: [id])
   recurringInvoice RecurringInvoice? @relation(fields: [recurringInvoiceId], references: [id])
+  emailMessages EmailMessage[]
+  lateFeeCharges LateFeeCharge[]
 
   @@unique([businessId, number])
   @@index([businessId, status])
   @@index([businessId, dueDate])
   @@map("invoices")
+}
+
+// A late fee assessed against one invoice — at most one per invoice
+// (one-time, not compounding). Posts Dr Accounts Receivable / Cr Late Fee
+// Income and bumps the invoice's total, so existing balance/payment logic
+// needs no changes to account for it.
+model LateFeeCharge {
+  id             String   @id @default(cuid())
+  businessId     String
+  invoiceId      String
+  amount         BigInt
+  journalEntryId String   @unique
+  appliedAt      DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invoice  Invoice  @relation(fields: [invoiceId], references: [id])
+
+  @@unique([invoiceId])
+  @@map("late_fee_charges")
 }
 
 model InvoiceLine {
@@ -587,6 +626,112 @@ model ExpenseLine {
 
   @@unique([expenseId, lineNo])
   @@map("expense_lines")
+}
+
+enum BillStatus {
+  DRAFT   // editable, not yet on the books
+  OPEN    // approved & posted to the ledger (A/P), awaiting payment
+  PAID
+  VOID
+
+  @@map("bill_status")
+}
+
+// A vendor bill: enter-now-pay-later, as opposed to Expense which records a
+// payment made immediately. Approval posts Dr Expense / Cr Accounts Payable;
+// each payment posts Dr Accounts Payable / Cr Cash — the AP mirror of
+// Invoice/Payment. This is what makes Aged Payables possible.
+model Bill {
+  id           String     @id @default(cuid())
+  businessId   String
+  vendorId     String
+  number       Int
+  status       BillStatus @default(DRAFT)
+  billDate     DateTime   @db.Date
+  dueDate      DateTime   @db.Date
+  currency     String
+  exchangeRate Decimal    @default(1) @db.Decimal(20, 10)
+  memo         String?
+  total        BigInt     @default(0)
+  // Ledger linkage: entry posted at approval; reversal entry if voided.
+  journalEntryId     String? @unique
+  voidJournalEntryId String? @unique
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  business Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  vendor   Vendor      @relation(fields: [vendorId], references: [id])
+  lines    BillLine[]
+  payments BillPayment[]
+
+  @@unique([businessId, number])
+  @@index([businessId, status])
+  @@index([businessId, dueDate])
+  @@map("bills")
+}
+
+model BillLine {
+  id          String  @id @default(cuid())
+  billId      String
+  lineNo      Int
+  description String?
+  expenseAccountId String
+  amount      BigInt
+
+  bill Bill @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  @@unique([billId, lineNo])
+  @@map("bill_lines")
+}
+
+model BillPayment {
+  id         String        @id @default(cuid())
+  businessId String
+  billId     String
+  date       DateTime      @db.Date
+  // Bill-currency minor units.
+  amount     BigInt
+  method     PaymentMethod
+  memo       String?
+  // Bank/cash account credited.
+  paymentAccountId String
+  journalEntryId   String? @unique
+  createdAt  DateTime      @default(now())
+
+  bill Bill @relation(fields: [billId], references: [id])
+
+  @@index([businessId, date])
+  @@map("bill_payments")
+}
+
+enum EmailKind {
+  INVOICE_REMINDER
+
+  @@map("email_kind")
+}
+
+// Every email the app sends (or would send) — the audit trail for reminders
+// and, later, receipt delivery. Sending goes through a pluggable
+// EmailProvider (src/lib/email/provider.ts): a console/log sandbox by
+// default, real SMTP behind env config — same pattern as bank feeds, invoice
+// payments, and e-file.
+model EmailMessage {
+  id                String    @id @default(cuid())
+  businessId        String
+  toEmail           String
+  subject           String
+  bodyText          String
+  kind              EmailKind
+  relatedInvoiceId  String?
+  providerName      String
+  providerMessageId String?
+  sentAt            DateTime  @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invoice  Invoice? @relation(fields: [relatedInvoiceId], references: [id])
+
+  @@index([businessId, relatedInvoiceId, sentAt])
+  @@map("email_messages")
 }
 
 // Uploaded files (receipts now; W-9s and generated PDFs later). Bytes live in
@@ -1024,4 +1169,113 @@ model WebhookSubscription {
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@map("webhook_subscriptions")
+}
+
+// ---------------------------------------------------------------------------
+// Products & Services catalog
+// ---------------------------------------------------------------------------
+
+// A reusable price-list entry so invoicing/billing doesn't require re-typing
+// price and income account every time. Not yet wired into the invoice/bill
+// line editors as a picker — this is the catalog itself.
+model Product {
+  id              String   @id @default(cuid())
+  businessId      String
+  name            String
+  description     String?
+  sku             String?
+  unitPrice       BigInt   @default(0)
+  incomeAccountId String
+  isArchived      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, name])
+  @@map("products")
+}
+
+// ---------------------------------------------------------------------------
+// Checkouts (standalone payment links, not tied to an invoice)
+// ---------------------------------------------------------------------------
+
+enum CheckoutStatus {
+  OPEN
+  PAID
+  VOID
+
+  @@map("checkout_status")
+}
+
+model Checkout {
+  id              String         @id @default(cuid())
+  businessId      String
+  token           String         @unique @default(cuid())
+  description     String
+  amount          BigInt
+  currency        String
+  incomeAccountId String
+  status          CheckoutStatus @default(OPEN)
+  payerName       String?
+  paidAt          DateTime?
+  depositAccountId String?
+  journalEntryId  String?        @unique
+  createdAt       DateTime       @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, status])
+  @@map("checkouts")
+}
+
+// ---------------------------------------------------------------------------
+// Payroll-lite: employee directory + timesheets.
+// ---------------------------------------------------------------------------
+//
+// No wage/tax calculation engine here — real W-2 payroll runs, tax
+// withholding, and direct deposit need a licensed payroll-tax provider this
+// project doesn't have (see README). This is the honest subset: who your
+// employees are, and hours worked, ready to hand to a provider later.
+
+enum EmployeeStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("employee_status")
+}
+
+model Employee {
+  id         String         @id @default(cuid())
+  businessId String
+  name       String
+  email      String?
+  title      String?
+  // Free-text pay basis ("hourly" / "salary") — display only, no computation.
+  payType    String         @default("hourly")
+  // Hourly rate or annual salary in minor units, display only.
+  rate       BigInt         @default(0)
+  startDate  DateTime?      @db.Date
+  status     EmployeeStatus @default(ACTIVE)
+  createdAt  DateTime       @default(now())
+
+  business   Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  timesheets Timesheet[]
+
+  @@index([businessId, name])
+  @@map("employees")
+}
+
+model Timesheet {
+  id         String   @id @default(cuid())
+  businessId String
+  employeeId String
+  weekStart  DateTime @db.Date
+  hours      Decimal  @db.Decimal(6, 2)
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, employeeId, weekStart])
+  @@map("timesheets")
 }

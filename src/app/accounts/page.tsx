@@ -64,7 +64,7 @@ export default async function AccountsPage() {
                         <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">COGS</span>
                       )}
                       {a.isSystem && (
-                        <span className="ml-2 rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-600">system</span>
+                        <span className="ml-2 rounded bg-teal-50 px-1.5 py-0.5 text-xs text-teal-600">system</span>
                       )}
                       {a.isArchived && (
                         <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">archived</span>

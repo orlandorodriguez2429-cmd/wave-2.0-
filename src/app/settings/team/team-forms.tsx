@@ -21,7 +21,7 @@ export function NewBusinessForm() {
           ))}
         </select>
       </label>
-      <button type="submit" disabled={pending} className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+      <button type="submit" disabled={pending} className="rounded-md bg-teal-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50">
         {pending ? 'Creating…' : 'Create business'}
       </button>
       {state.error && <p className="text-sm text-red-600">{state.error}</p>}
@@ -38,7 +38,7 @@ export function TokenForm() {
           <span className="block text-xs font-medium text-slate-500 mb-1">Token name</span>
           <input name="name" placeholder="ci-integration" required className="w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm" />
         </label>
-        <button type="submit" disabled={pending} className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+        <button type="submit" disabled={pending} className="rounded-md bg-teal-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50">
           {pending ? 'Creating…' : 'Create token'}
         </button>
       </form>

@@ -90,7 +90,7 @@ export default async function VendorDetailPage({
               </div>
             )}
             <details className="text-sm">
-              <summary className="cursor-pointer font-medium text-blue-700">Enter W-9 manually</summary>
+              <summary className="cursor-pointer font-medium text-teal-700">Enter W-9 manually</summary>
               <div className="mt-3">
                 <W9Form action={enterW9Action} hidden={{ vendorId: vendor.id }} submitLabel="Save W-9 data" />
               </div>

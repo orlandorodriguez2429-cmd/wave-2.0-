@@ -57,8 +57,8 @@ export default async function BankingPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Banking</h1>
         <div className="flex gap-3 text-sm">
-          <Link href="/banking/rules" className="text-blue-700 hover:underline">Rules</Link>
-          <Link href="/banking/reconcile" className="text-blue-700 hover:underline">Reconciliation</Link>
+          <Link href="/banking/rules" className="text-teal-700 hover:underline">Rules</Link>
+          <Link href="/banking/reconcile" className="text-teal-700 hover:underline">Reconciliation</Link>
         </div>
       </div>
 
@@ -137,7 +137,7 @@ export default async function BankingPage() {
                 <td className="px-3 py-2.5">
                   <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${
                     t.status === 'CATEGORIZED' ? 'bg-green-100 text-green-700'
-                    : t.status === 'MATCHED' ? 'bg-blue-50 text-blue-700'
+                    : t.status === 'MATCHED' ? 'bg-teal-50 text-teal-700'
                     : 'bg-slate-100 text-slate-500'
                   }`}>
                     {t.status.toLowerCase()}
@@ -148,7 +148,7 @@ export default async function BankingPage() {
                     // display resolved via journal entry link
                     '') ?? '' : ''}
                   {t.journalEntryId && (
-                    <Link href={`/journal/${t.journalEntryId}`} className="text-blue-700 hover:underline">
+                    <Link href={`/journal/${t.journalEntryId}`} className="text-teal-700 hover:underline">
                       view entry
                     </Link>
                   )}

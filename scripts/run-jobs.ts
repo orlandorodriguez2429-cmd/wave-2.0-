@@ -4,6 +4,7 @@
 import 'dotenv/config';
 import { prisma } from '../src/lib/db';
 import { runDueRecurringInvoices } from '../src/lib/invoicing/recurring';
+import { sendDueReminders } from '../src/lib/invoicing/reminders';
 
 async function main() {
   console.log(`[jobs] ${new Date().toISOString()} starting`);
@@ -14,6 +15,11 @@ async function main() {
     else console.log(`[jobs] recurring ${r.recurringInvoiceId} -> invoice #${r.invoiceNumber}`);
   }
   if (recurring.length === 0) console.log('[jobs] no recurring invoices due');
+
+  const reminders = await sendDueReminders();
+  const sent = reminders.filter((r) => r.sent);
+  for (const r of sent) console.log(`[jobs] reminder sent for invoice #${r.number}`);
+  console.log(`[jobs] ${sent.length} reminder(s) sent, ${reminders.length - sent.length} skipped`);
 
   console.log('[jobs] done');
 }

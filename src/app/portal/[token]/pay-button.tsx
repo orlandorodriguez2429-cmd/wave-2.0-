@@ -9,7 +9,7 @@ export function PortalPayButton({ token, amountLabel }: { token: string; amountL
     <button
       onClick={() => startTransition(() => portalPayAction(token))}
       disabled={pending}
-      className="w-full rounded-md bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+      className="w-full rounded-md bg-teal-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
     >
       {pending ? 'Processing…' : `Pay ${amountLabel} now`}
     </button>
