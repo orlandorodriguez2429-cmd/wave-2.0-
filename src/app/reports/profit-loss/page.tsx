@@ -1,5 +1,7 @@
+import Link from 'next/link';
 import { getCurrentContext } from '@/lib/context';
 import { profitAndLoss, type PnlSection } from '@/lib/ledger/reports';
+import { cashBasisProfitAndLoss } from '@/lib/ledger/more-reports';
 import { formatMoney } from '@/lib/money';
 import { DateRangeForm } from '../date-range-form';
 
@@ -35,7 +37,7 @@ function Section({ section, currency }: { section: PnlSection; currency: string 
 export default async function ProfitLossPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; basis?: string }>;
 }) {
   const params = await searchParams;
   const { business } = await getCurrentContext();
@@ -44,8 +46,12 @@ export default async function ProfitLossPage({
   const year = new Date().getUTCFullYear();
   const from = params.from || `${year}-01-01`;
   const to = params.to || new Date().toISOString().slice(0, 10);
+  const basis = params.basis === 'cash' ? 'cash' : params.basis === 'accrual' ? 'accrual' : business.accountingBasis === 'CASH' ? 'cash' : 'accrual';
 
-  const pnl = await profitAndLoss(business.id, { from: new Date(from), to: new Date(to) });
+  const pnl =
+    basis === 'cash'
+      ? await cashBasisProfitAndLoss(business.id, { from: new Date(from), to: new Date(to) })
+      : await profitAndLoss(business.id, { from: new Date(from), to: new Date(to) });
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -54,10 +60,26 @@ export default async function ProfitLossPage({
           <h1 className="text-2xl font-semibold">Profit &amp; Loss</h1>
           <p className="text-sm text-slate-500 mt-1">
             {from} → {to} · {currency} ·{' '}
-            <a href={`/reports/export/profit-loss?from=${from}&to=${to}`} className="text-teal-700 hover:underline">CSV</a>
+            <a href={`/reports/export/profit-loss?from=${from}&to=${to}&basis=${basis}`} className="text-teal-700 hover:underline">CSV</a>
           </p>
         </div>
-        <DateRangeForm from={from} to={to} />
+        <div className="flex items-end gap-4 flex-wrap">
+          <div className="flex rounded-md border border-slate-300 overflow-hidden text-sm">
+            <Link
+              href={`?from=${from}&to=${to}&basis=accrual`}
+              className={`px-3 py-1.5 ${basis === 'accrual' ? 'bg-teal-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+            >
+              Accrual
+            </Link>
+            <Link
+              href={`?from=${from}&to=${to}&basis=cash`}
+              className={`px-3 py-1.5 border-l border-slate-300 ${basis === 'cash' ? 'bg-teal-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+            >
+              Cash
+            </Link>
+          </div>
+          <DateRangeForm from={from} to={to} />
+        </div>
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">

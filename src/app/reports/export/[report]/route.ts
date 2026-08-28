@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentContext } from '@/lib/context';
 import { balanceSheet, profitAndLoss, trialBalance } from '@/lib/ledger/reports';
-import { agedPayables, agedReceivables, cashFlow, salesTaxReport } from '@/lib/ledger/more-reports';
+import { agedPayables, agedReceivables, cashBasisProfitAndLoss, cashFlow, salesTaxReport } from '@/lib/ledger/more-reports';
 import { formatAmount } from '@/lib/money';
 
 // CSV export for every report: /reports/export/<report>?from=&to=
@@ -43,7 +43,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ report: str
       break;
     }
     case 'profit-loss': {
-      const pnl = await profitAndLoss(business.id, { from, to });
+      const pnl =
+        sp.get('basis') === 'cash'
+          ? await cashBasisProfitAndLoss(business.id, { from, to })
+          : await profitAndLoss(business.id, { from, to });
       rows = [['Section', 'Code', 'Account', `Amount (${cur})`]];
       for (const section of [pnl.income, pnl.cogs, pnl.expenses]) {
         for (const r of section.rows) rows.push([section.title, r.code, r.name, fmt(r.amount)]);
