@@ -10,7 +10,6 @@ import { createCheckout, payCheckout, voidCheckout } from './checkouts';
 
 let userId: string;
 let businessId: string;
-let checking: string;
 let serviceRevenue: string;
 
 beforeAll(async () => {
@@ -20,9 +19,9 @@ beforeAll(async () => {
   userId = user.id;
   const business = await createBusiness({ userId, name: 'Checkouts Test Co' });
   businessId = business.id;
-  const byCode = async (code: string) =>
-    (await prisma.account.findUniqueOrThrow({ where: { businessId_code: { businessId, code } } })).id;
-  [checking, serviceRevenue] = await Promise.all(['1010', '4100'].map(byCode));
+  serviceRevenue = (
+    await prisma.account.findUniqueOrThrow({ where: { businessId_code: { businessId, code: '4100' } } })
+  ).id;
 });
 
 afterAll(async () => {

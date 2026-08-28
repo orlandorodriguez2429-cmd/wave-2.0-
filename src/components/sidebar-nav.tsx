@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
+import { NavIcon, type NavIconName } from '@/components/nav-icon';
 
 type Item = { href: string; label: string; badge?: string };
 
@@ -92,18 +93,18 @@ export function SidebarNav() {
         )}
       </div>
 
-      <TopLink href="/" label="Dashboard" active={pathname === '/'} />
+      <TopLink href="/" label="Dashboard" icon="dashboard" active={pathname === '/'} />
 
-      <Section title="Sales & Payments" open={open.sales} onToggle={() => toggle('sales')} links={salesLinks} pathname={pathname} />
-      <Section title="Purchases" open={open.purchases} onToggle={() => toggle('purchases')} links={purchasesLinks} pathname={pathname} />
-      <TopLink href="/receipts" label="Receipts" active={pathname === '/receipts'} />
-      <Section title="Accounting" open={open.accounting} onToggle={() => toggle('accounting')} links={accountingLinks} pathname={pathname} />
-      <Section title="Banking" open={open.banking} onToggle={() => toggle('banking')} links={bankingLinks} pathname={pathname} />
-      <Section title="Payroll" open={open.payroll} onToggle={() => toggle('payroll')} links={payrollLinks} pathname={pathname} />
-      <TopLink href="/reports" label="Reports" active={pathname === '/reports'} />
-      <TopLink href="/advisors" label="Wave Advisors" active={pathname === '/advisors'} />
-      <TopLink href="/tax-filing" label="Tax filing" active={pathname?.startsWith('/tax-filing')} />
-      <TopLink href="/perks" label="Perks" badge="New" active={pathname === '/perks'} />
+      <Section title="Sales & Payments" icon="sales" open={open.sales} onToggle={() => toggle('sales')} links={salesLinks} pathname={pathname} />
+      <Section title="Purchases" icon="purchases" open={open.purchases} onToggle={() => toggle('purchases')} links={purchasesLinks} pathname={pathname} />
+      <TopLink href="/receipts" label="Receipts" icon="receipts" active={pathname === '/receipts'} />
+      <Section title="Accounting" icon="accounting" open={open.accounting} onToggle={() => toggle('accounting')} links={accountingLinks} pathname={pathname} />
+      <Section title="Banking" icon="banking" open={open.banking} onToggle={() => toggle('banking')} links={bankingLinks} pathname={pathname} />
+      <Section title="Payroll" icon="payroll" open={open.payroll} onToggle={() => toggle('payroll')} links={payrollLinks} pathname={pathname} />
+      <TopLink href="/reports" label="Reports" icon="reports" active={pathname === '/reports'} />
+      <TopLink href="/advisors" label="Wave Advisors" icon="advisors" active={pathname === '/advisors'} />
+      <TopLink href="/tax-filing" label="Tax filing" icon="tax" active={pathname?.startsWith('/tax-filing')} />
+      <TopLink href="/perks" label="Perks" icon="perks" badge="New" active={pathname === '/perks'} />
 
       <p className="px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Settings</p>
       <TopLink href="/settings/invoicing" label="Invoicing" small active={pathname === '/settings/invoicing'} />
@@ -114,12 +115,14 @@ export function SidebarNav() {
 
 function Section({
   title,
+  icon,
   open,
   onToggle,
   links,
   pathname,
 }: {
   title: string;
+  icon: NavIconName;
   open: boolean;
   onToggle: () => void;
   links: Item[];
@@ -129,9 +132,10 @@ function Section({
     <>
       <button
         onClick={onToggle}
-        className="w-full flex items-center justify-between rounded-md px-3 py-1.5 text-sm font-medium text-slate-300 hover:bg-white/10 hover:text-white border-l-2 border-transparent hover:border-teal-400"
+        className="w-full flex items-center gap-2.5 rounded-md px-3 py-1.5 text-sm font-medium text-slate-300 hover:bg-white/10 hover:text-white border-l-2 border-transparent hover:border-teal-400"
       >
-        {title}
+        <NavIcon name={icon} className="shrink-0 text-slate-400" />
+        <span className="flex-1 text-left">{title}</span>
         <span className="text-xs text-slate-500">{open ? '▾' : '▸'}</span>
       </button>
       {open && (
@@ -145,17 +149,18 @@ function Section({
   );
 }
 
-function TopLink({ href, label, badge, small, active }: Item & { small?: boolean; active?: boolean }) {
+function TopLink({ href, label, icon, badge, small, active }: Item & { icon?: NavIconName; small?: boolean; active?: boolean }) {
   return (
     <Link
       href={href}
-      className={`flex items-center justify-between rounded-md px-3 py-1.5 ${
+      className={`flex items-center gap-2.5 rounded-md px-3 py-1.5 ${
         small ? 'text-[13px]' : 'text-sm'
       } font-medium ${active ? 'bg-[#16324a] text-white' : 'text-slate-300'} hover:bg-white/10 hover:text-white border-l-2 ${
         active ? 'border-teal-400' : 'border-transparent'
       } hover:border-teal-400`}
     >
-      <span>{label}</span>
+      {icon && <NavIcon name={icon} className={`shrink-0 ${active ? 'text-teal-400' : 'text-slate-400'}`} />}
+      <span className="flex-1">{label}</span>
       {badge && (
         <span className="rounded-full bg-teal-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-teal-300">
           {badge}
