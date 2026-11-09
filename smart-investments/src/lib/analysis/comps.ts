@@ -16,6 +16,7 @@ export const COMP_TIERS: CompTier[] = [
   { radiusMiles: 0.5, months: 6, label: "within 0.5 mi, last 6 months" },
   { radiusMiles: 0.5, months: 12, label: "within 0.5 mi, last 12 months" },
   { radiusMiles: 1, months: 12, label: "within 1 mi, last 12 months" },
+  { radiusMiles: 1, months: 18, label: "within 1 mi, last 18 months" },
 ];
 
 export const MIN_COMPS = 3;
@@ -27,6 +28,8 @@ export const SQFT_BAND = 0.2;
  */
 export function isMarketSale(c: SaleComp): boolean {
   if (!(c.price >= 10_000)) return false;
+  if (c.qualified === true) return true;
+  if (c.qualified === false) return false;
   if (c.assessedValue !== null && c.price < 0.5 * c.assessedValue) return false;
   return true;
 }

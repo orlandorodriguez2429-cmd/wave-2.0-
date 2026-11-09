@@ -22,6 +22,7 @@ export const RESIDENTIAL_TYPES: PropertyType[] = [
 export function recordIsMarketSale(r: PropertyRecord): boolean {
   const price = r.lastTransferPrice.value;
   if (price === null || price < 10_000) return false;
+  if (r.lastTransferQualified !== null) return r.lastTransferQualified;
   const assessed = r.assessedValue.value;
   if (assessed !== null && price < 0.5 * assessed) return false;
   return true;

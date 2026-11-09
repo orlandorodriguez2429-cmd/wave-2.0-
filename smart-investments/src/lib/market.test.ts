@@ -22,6 +22,12 @@ function rec(o: {
   const address = `${n} MAIN ST`;
   return {
     county: "miami-dade",
+    countyName: "Miami-Dade",
+    parcelId: "x",
+    justValue: s<number>(null),
+    homestead: s<boolean>(null),
+    lastTransferQualified: null,
+    olderTransfersUnknown: false,
     folio: String(3000000000000 + n),
     address: s(address),
     unit: s<string>(null),

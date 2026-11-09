@@ -7,9 +7,9 @@ import { zipSnapshot, type ZipSnapshot } from "@/lib/report";
 import { fmtDate, fmtMoney, fmtPct } from "@/lib/sourced";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
-const SOURCE = "Computed from Miami-Dade Property Appraiser records (Property Point View): each parcel's most recent deed transfer";
+const SOURCE = "Computed from county or state tax-roll records: each parcel's most recent recorded sale";
 
 export default async function MarketPage({ searchParams }: { searchParams: Promise<{ zip?: string }> }) {
   const sp = await searchParams;
@@ -43,7 +43,7 @@ export default async function MarketPage({ searchParams }: { searchParams: Promi
   return (
     <div className="stagger flex flex-col gap-5">
       <section className="card">
-        <div className="h-eyebrow">Miami-Dade</div>
+        <div className="h-eyebrow">{snap?.countyName ? `${snap.countyName} County` : "Florida"}</div>
         <h1 className="mt-1 text-3xl font-bold tracking-tight">{es ? "Mercado por código postal" : "Market by zip code"}</h1>
         <p className="muted mt-1">
           {es
@@ -55,7 +55,7 @@ export default async function MarketPage({ searchParams }: { searchParams: Promi
           <button className="btn shrink-0">{es ? "Ver mercado" : "Show market"}</button>
         </form>
         {raw && !zip ? <p className="text-bad mt-2 text-sm">Enter a 5-digit zip code.</p> : null}
-        <p className="muted mt-3 text-xs">{es ? "La primera carga de un código postal tarda 20–60 segundos." : "The first load of a zip code takes 20–60 seconds."}</p>
+        <p className="muted mt-3 text-xs">{es ? "La primera carga tarda 20–60 segundos en Miami-Dade y de 1 a 6 minutos en otros condados (el servicio estatal es lento). Luego se reutiliza por 6 horas." : "The first load takes 20–60 seconds in Miami-Dade and 1–6 minutes in other counties (the state service is slow). It is then reused for 6 hours."}</p>
       </section>
 
       {error ? (
@@ -67,7 +67,7 @@ export default async function MarketPage({ searchParams }: { searchParams: Promi
       ) : null}
 
       {stats && snap && stats.parcels === 0 ? (
-        <section className="card">No residential parcels found for {zip} in Miami-Dade County.</section>
+        <section className="card">No residential parcels found for {zip} in Florida.</section>
       ) : null}
 
       {stats && snap && stats.parcels > 0 ? (
@@ -83,7 +83,7 @@ export default async function MarketPage({ searchParams }: { searchParams: Promi
               </div>
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {tile(es ? "Ventas de mercado" : "Market sales", stats.sales12m.toLocaleString("en-US"), "Transfers of $10,000+ and at least half of assessed value.")}
+              {tile(es ? "Ventas de mercado" : "Market sales", stats.sales12m.toLocaleString("en-US"), "Market sales only: state-qualified sales, or where the source has no such code, transfers of $10,000+ at no less than half of assessed value.")}
               {tile(
                 es ? "Compras de inversionistas" : "Investor purchases",
                 fmtPct(stats.investorShare, 0),

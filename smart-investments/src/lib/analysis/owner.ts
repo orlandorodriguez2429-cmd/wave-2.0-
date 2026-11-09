@@ -36,8 +36,11 @@ export function analyzeOwner(p: PropertyRecord, today: Date = new Date()): Owner
   if (site && mail) {
     // Condo mailing addresses usually repeat the street address plus the unit, so a prefix match counts as the same place.
     const sameStreet = mail === site || mail.startsWith(`${site} `);
+    // Tax rolls sometimes carry a wrong site zip, so a matching city also counts as the same place.
     const sameZip = !p.zip.value || !p.mailingZip.value || p.zip.value === p.mailingZip.value;
-    absentee = !(sameStreet && sameZip);
+    const sameCity =
+      !!p.city.value && !!p.mailingCity.value && p.city.value.toUpperCase() === p.mailingCity.value.toUpperCase();
+    absentee = !(sameStreet && (sameZip || sameCity));
   }
 
   const state = p.mailingState.value?.toUpperCase() ?? null;

@@ -1,8 +1,10 @@
-// Assembles everything the Deal Report and the Lead Finder need from the adapters.
+// Assembles everything the Deal Report, Lead Finder, Market and Buyers screens need from the adapters.
+// Miami-Dade uses its own weekly county source; every other Florida county uses the state tax roll.
 
 import { floodZoneAt, type FloodZone } from "@/lib/adapters/fema";
 import { distressFor, ownershipFor, salesFor } from "@/lib/adapters/registry";
-import type { DistressSignal, PropertyRecord, PropertyType, SaleComp } from "@/lib/adapters/types";
+import { parseStatewideId, statewideExtras } from "@/lib/adapters/statewide";
+import type { County, DistressSignal, PropertyRecord, PropertyType, SaleComp } from "@/lib/adapters/types";
 import { parseQuery, streetCandidates } from "@/lib/address";
 import { buildApproach, type Approach } from "@/lib/analysis/approach";
 import {
@@ -18,7 +20,18 @@ import { floridaGotchas, type Gotcha } from "@/lib/analysis/florida";
 import { analyzeOwner, type OwnerIntel } from "@/lib/analysis/owner";
 import { motivationScore, type MotivationScore } from "@/lib/analysis/score";
 
-const COUNTY = "miami-dade" as const;
+const MD: County = "miami-dade";
+const STATE: County = "fl-0"; // any non-Miami-Dade value routes to the statewide adapter
+
+/** Valid route ids: a 13-digit Miami-Dade folio, or "fl-<county number>-<parcel id>". */
+export function isPropertyId(id: string): boolean {
+  return /^\d{13}$/.test(id) || parseStatewideId(id) !== null;
+}
+
+function countyOfId(id: string): County {
+  const parsed = parseStatewideId(id);
+  return parsed ? `fl-${parsed.countyNo}` : MD;
+}
 
 export type LookupResult =
   | { kind: "empty" }
@@ -26,7 +39,7 @@ export type LookupResult =
   | { kind: "one"; folio: string }
   | { kind: "many"; matches: PropertyRecord[] };
 
-/** Census Bureau geocoder: free, official, no key. Used only when the county address match fails. */
+/** Census Bureau geocoder: free, official, no key. */
 async function geocode(raw: string): Promise<{ lat: number; lng: number } | null> {
   try {
     const url = new URL("https://geocoding.geo.census.gov/geocoder/locations/onelineaddress");
@@ -45,46 +58,97 @@ async function geocode(raw: string): Promise<{ lat: number; lng: number } | null
   }
 }
 
-export async function lookup(input: string): Promise<LookupResult> {
-  const q = parseQuery(input);
-  if (q.kind === "empty") return { kind: "empty" };
-  const ownership = ownershipFor(COUNTY)!;
+const NOT_A_NAME = new Set([
+  "N", "S", "E", "W", "NE", "NW", "SE", "SW",
+  "ST", "AVE", "RD", "DR", "CT", "TER", "PL", "LN", "BLVD", "CIR", "HWY", "PKWY", "TRL", "SQ", "WAY",
+  "STREET", "AVENUE", "ROAD", "DRIVE", "COURT", "TERRACE", "PLACE", "LANE", "BOULEVARD", "CIRCLE", "HIGHWAY",
+]);
 
-  if (q.kind === "folio") {
-    const rec = await ownership.getByFolio(q.folio);
-    return rec ? { kind: "one", folio: rec.folio } : { kind: "none", tried: q.folio, geocoded: false };
+/** The words that identify a street: "SW 15 AVE" -> ["15"], "N OLIVE AVE" -> ["OLIVE"]. Ordinals are reduced ("15TH" -> "15"). */
+export function streetNameTokens(tokens: string[]): string[] {
+  return tokens
+    .map((t) => t.toUpperCase().replace(/^(\d+)(ST|ND|RD|TH)$/, "$1"))
+    .filter((t) => t !== "" && !NOT_A_NAME.has(t) && !/^(FL|FLORIDA)$/.test(t));
+}
+
+/** A state-roll record for a Miami-Dade parcel is swapped for the richer county record. */
+function routeId(r: PropertyRecord): string {
+  return r.county === "fl-23" && /^\d{13}$/.test(r.parcelId) ? r.parcelId : r.folio;
+}
+
+function pick(list: PropertyRecord[]): LookupResult | null {
+  if (list.length === 1) return { kind: "one", folio: routeId(list[0]) };
+  if (list.length > 1) return { kind: "many", matches: list.map((r) => ({ ...r, folio: routeId(r) })) };
+  return null;
+}
+
+export async function lookup(input: string): Promise<LookupResult> {
+  const raw = input.trim();
+  if (!raw) return { kind: "empty" };
+  const county = ownershipFor(MD);
+  const state = ownershipFor(STATE);
+
+  // Typed or pasted ids.
+  if (parseStatewideId(raw)) {
+    const rec = await state.getByFolio(raw);
+    return rec ? { kind: "one", folio: rec.folio } : { kind: "none", tried: raw, geocoded: false };
   }
+  const digits = raw.replace(/[\s-]/g, "");
+  if (/^\d{10,20}$/.test(digits)) {
+    if (digits.length === 13) {
+      const rec = await county.getByFolio(digits);
+      if (rec) return { kind: "one", folio: rec.folio };
+    }
+    // Any other county's parcel number, with or without dashes.
+    const found = pick(await state.searchByAddress([...new Set([digits, raw])], { mode: "exact" }));
+    return found ?? { kind: "none", tried: raw, geocoded: false };
+  }
+
+  const q = parseQuery(raw);
+  if (q.kind !== "address") return { kind: "none", tried: raw, geocoded: false };
 
   const candidates = streetCandidates(q.tokens);
   const settle = (matches: PropertyRecord[]): LookupResult | null => {
     // When several candidate spellings matched, keep the longest (most specific) one.
     const best = candidates.find((c) => matches.some((m) => m.address.value === c));
-    const list = best ? matches.filter((m) => m.address.value === best) : matches;
-    if (list.length === 1) return { kind: "one", folio: list[0].folio };
-    if (list.length > 1) return { kind: "many", matches: list };
-    return null;
+    return pick(best ? matches.filter((m) => m.address.value === best) : matches);
   };
 
-  let exact = await ownership.searchByAddress(candidates, { mode: "exact", zip: q.zip, unit: q.unit });
-  if (exact.length === 0 && q.unit) exact = await ownership.searchByAddress(candidates, { mode: "exact", zip: q.zip });
+  // The map lookup runs alongside the county search so other counties are not kept waiting.
+  const pointPromise = geocode(q.raw);
+  let exact = await county.searchByAddress(candidates, { mode: "exact", zip: q.zip, unit: q.unit });
+  if (exact.length === 0 && q.unit) exact = await county.searchByAddress(candidates, { mode: "exact", zip: q.zip });
   const exactResult = settle(exact);
   if (exactResult) return exactResult;
 
-  // Prefix search catches partial input such as "10236 W 32".
+  const point = await pointPromise;
+  const houseNumber = q.tokens[0];
+  if (point) {
+    // Statewide roll: parcels within about 150 m of the mapped address, same house number.
+    const near = (await state.nearestToPoint(point.lat, point.lng, 150)).filter(
+      (n) => n.address.value?.split(" ")[0] === houseNumber,
+    );
+    // Same house number is not enough: the street's own name (not "SW" or "AVE") must match too.
+    const names = streetNameTokens(q.tokens.slice(1));
+    let list = near.filter((n) => {
+      const words = streetNameTokens(n.address.value?.split(" ").slice(1) ?? []);
+      // Only the first name word is required, so a city typed without a comma does not block the match.
+      return names.length > 0 && words.includes(names[0]);
+    });
+    if (q.unit) {
+      const withUnit = list.filter((n) => n.unit.value === q.unit || n.address.value?.endsWith(` ${q.unit}`));
+      if (withUnit.length) list = withUnit;
+    }
+    const found = pick(list.slice(0, 25));
+    if (found) return found;
+  }
+
+  // Miami-Dade prefix search catches partial input such as "10236 W 32".
   const shortest = candidates[candidates.length - 1];
-  const prefixResult = settle(await ownership.searchByAddress([shortest], { mode: "prefix", zip: q.zip }));
+  const prefixResult = settle(await county.searchByAddress([shortest], { mode: "prefix", zip: q.zip }));
   if (prefixResult) return prefixResult;
 
-  const point = await geocode(q.raw);
-  if (point) {
-    const near = await ownership.nearestToPoint(point.lat, point.lng, 60);
-    const sameNumber = near.filter((n) => n.address.value?.split(" ")[0] === q.tokens[0]);
-    const pick = sameNumber.length ? sameNumber : [];
-    if (pick.length === 1) return { kind: "one", folio: pick[0].folio };
-    if (pick.length > 1) return { kind: "many", matches: pick };
-    return { kind: "none", tried: q.street, geocoded: true };
-  }
-  return { kind: "none", tried: q.street, geocoded: false };
+  return { kind: "none", tried: q.street, geocoded: point !== null };
 }
 
 export interface DealReport {
@@ -108,42 +172,51 @@ export interface DealReport {
 }
 
 async function findComps(p: PropertyRecord): Promise<{ comps: SaleComp[]; tierIndex: number | null }> {
-  const sales = salesFor(COUNTY)!;
+  const sales = salesFor(p.county);
   if (p.lat === null || p.lng === null || !p.useCode.value || p.propertyType === "other") {
     return { comps: [], tierIndex: null };
   }
   const sqft = p.heatedSqft.value;
+  // One request for the widest search; the narrower tiers are then applied here.
+  const widest = COMP_TIERS[COMP_TIERS.length - 1];
+  const maxRadius = Math.max(...COMP_TIERS.map((t) => t.radiusMiles));
+  const raw = await sales.recentSalesNear({
+    lat: p.lat,
+    lng: p.lng,
+    radiusMiles: maxRadius,
+    sinceIso: monthsAgoIso(Math.max(...COMP_TIERS.map((t) => t.months), widest.months)),
+    useCode: p.useCode.value,
+    minSqft: sqft ? sqft * (1 - SQFT_BAND) : null,
+    maxSqft: sqft ? sqft * (1 + SQFT_BAND) : null,
+  });
+  const all = usableComps(p.folio, raw);
   let best: { comps: SaleComp[]; tierIndex: number | null } = { comps: [], tierIndex: null };
   for (let i = 0; i < COMP_TIERS.length; i++) {
     const tier = COMP_TIERS[i];
-    const raw = await sales.recentSalesNear({
-      lat: p.lat,
-      lng: p.lng,
-      radiusMiles: tier.radiusMiles,
-      sinceIso: monthsAgoIso(tier.months),
-      useCode: p.useCode.value,
-      minSqft: sqft ? sqft * (1 - SQFT_BAND) : null,
-      maxSqft: sqft ? sqft * (1 + SQFT_BAND) : null,
-    });
-    const comps = usableComps(p.folio, raw).slice(0, 15);
+    const since = monthsAgoIso(tier.months).slice(0, 7);
+    const comps = all
+      .filter((c) => (c.distanceMiles ?? 99) <= tier.radiusMiles && c.saleDate.slice(0, 7) >= since)
+      .slice(0, 15);
     if (comps.length > best.comps.length) best = { comps, tierIndex: i };
     if (comps.length >= MIN_COMPS) break;
   }
   return best;
 }
 
-export async function buildReport(folio: string): Promise<DealReport | null> {
+export async function buildReport(id: string): Promise<DealReport | null> {
+  if (!isPropertyId(id)) return null;
   const started = Date.now();
-  const ownership = ownershipFor(COUNTY)!;
-  const distress = distressFor(COUNTY)!;
+  const county = countyOfId(id);
+  const ownership = ownershipFor(county);
+  const distress = distressFor(county);
 
-  const property = await ownership.getByFolio(folio);
+  const property = await ownership.getByFolio(id);
   if (!property) return null;
 
-  const violationsCovered = distress.covers(folio);
+  const violationsCovered = distress?.covers(id) ?? false;
   let floodLookupFailed = false;
-  const [signals, compResult, flood] = await Promise.all([
-    violationsCovered ? distress.getForFolio(folio) : Promise.resolve([] as DistressSignal[]),
+  const [signals, compResult, flood, extras] = await Promise.all([
+    violationsCovered && distress ? distress.getForFolio(id) : Promise.resolve([] as DistressSignal[]),
     findComps(property),
     property.lat !== null && property.lng !== null
       ? floodZoneAt(property.lat, property.lng).catch(() => {
@@ -151,7 +224,13 @@ export async function buildReport(folio: string): Promise<DealReport | null> {
           return null;
         })
       : Promise.resolve(null),
+    // The county layer has no homestead flag or market value; the state roll does.
+    county === MD ? statewideExtras(23, id).catch(() => null) : Promise.resolve(null),
   ]);
+  if (extras) {
+    property.homestead = extras.homestead;
+    property.justValue = extras.justValue;
+  }
 
   const owner = analyzeOwner(property);
   const score = motivationScore({ owner, signals, violationsCovered });
@@ -172,6 +251,8 @@ export async function buildReport(folio: string): Promise<DealReport | null> {
     violationsCovered,
     openViolationCount: signals.filter((s) => s.open).length,
     city: property.city.value,
+    county: property.county,
+    countyName: property.countyName,
     flood,
   });
 
@@ -188,13 +269,49 @@ export async function buildReport(folio: string): Promise<DealReport | null> {
     comps: compResult.comps,
     compTierIndex: compResult.tierIndex,
     compTierLabel: compResult.tierIndex === null ? null : COMP_TIERS[compResult.tierIndex].label,
-    compSource: salesFor(COUNTY)!.info.name,
+    compSource: salesFor(county).info.name,
     value,
     flood,
     floodLookupFailed,
     gotchas,
     approach: buildApproach({ address: fullAddress || "the property", owner, signals }),
     generatedAt: new Date().toISOString(),
+    elapsedMs: Date.now() - started,
+  };
+}
+
+// ---------- Zip loading (Lead Finder, Market, Buyers) ----------
+
+export interface ZipSnapshot {
+  records: PropertyRecord[];
+  total: number;
+  truncated: boolean;
+  dataAsOf: string | null;
+  /** Where the zip's records came from. */
+  county: County;
+  countyName: string | null;
+  source: string | null;
+  elapsedMs: number;
+}
+
+/** Parcels in a zip code. Miami-Dade zips use the county source; all others use the state roll. Cached 6 hours. */
+export async function zipSnapshot(zip: string, types: PropertyType[]): Promise<ZipSnapshot> {
+  const started = Date.now();
+  let county: County = MD;
+  let res = await ownershipFor(MD).listByZip(zip, { types, max: 30_000 });
+  if (res.total === 0) {
+    county = STATE;
+    res = await ownershipFor(STATE).listByZip(zip, { types, max: 30_000 });
+  }
+  const first = res.records[0];
+  return {
+    records: res.records,
+    total: res.total,
+    truncated: res.truncated,
+    dataAsOf: first?.address.asOf ?? null,
+    county: first?.county ?? county,
+    countyName: first?.countyName ?? null,
+    source: first?.address.source ?? null,
     elapsedMs: Date.now() - started,
   };
 }
@@ -214,6 +331,7 @@ export interface Lead {
   sqft: number | null;
   yearBuilt: number | null;
   yearsSinceTransfer: number | null;
+  homestead: boolean | null;
   score: number;
   reasons: { label: string; points: number }[];
 }
@@ -234,19 +352,21 @@ export interface LeadResult {
   matched: number;
   violationsCoveredCount: number;
   dataAsOf: string | null;
+  county: County;
+  countyName: string | null;
+  source: string | null;
   elapsedMs: number;
 }
 
 export async function findLeads(search: LeadSearch): Promise<LeadResult> {
   const started = Date.now();
-  const ownership = ownershipFor(COUNTY)!;
-  const distress = distressFor(COUNTY)!;
+  const snap = await zipSnapshot(search.zip, search.types);
+  const { records } = snap;
+  const distress = distressFor(snap.county);
 
-  const { records, truncated, total } = await ownership.listByZip(search.zip, { types: search.types, max: 30_000 });
-
-  const covered = records.filter((r) => distress.covers(r.folio) && r.lat !== null && r.lng !== null);
+  const covered = distress ? records.filter((r) => distress.covers(r.folio) && r.lat !== null && r.lng !== null) : [];
   const byFolio = new Map<string, DistressSignal[]>();
-  if (covered.length > 0) {
+  if (distress && covered.length > 0) {
     const lats = covered.map((r) => r.lat as number);
     const lngs = covered.map((r) => r.lng as number);
     const signals = await distress.openSignalsInBox({
@@ -268,7 +388,7 @@ export async function findLeads(search: LeadSearch): Promise<LeadResult> {
     const owner = analyzeOwner(r, today);
     if (owner.kind === "government") continue;
     if (search.absenteeOnly && !owner.absentee) continue;
-    const violationsCovered = distress.covers(r.folio);
+    const violationsCovered = distress?.covers(r.folio) ?? false;
     const score = motivationScore({ owner, signals: byFolio.get(r.folio) ?? [], violationsCovered });
     if (score.score < search.minScore || score.score === 0) continue;
     leads.push({
@@ -284,6 +404,7 @@ export async function findLeads(search: LeadSearch): Promise<LeadResult> {
       sqft: r.heatedSqft.value,
       yearBuilt: r.yearBuilt.value,
       yearsSinceTransfer: owner.yearsSinceTransfer,
+      homestead: r.homestead.value,
       score: score.score,
       reasons: score.reasons,
     });
@@ -293,28 +414,14 @@ export async function findLeads(search: LeadSearch): Promise<LeadResult> {
   return {
     leads: leads.slice(0, search.limit),
     scanned: records.length,
-    totalInZip: total,
-    truncated,
+    totalInZip: snap.total,
+    truncated: snap.truncated,
     matched: leads.length,
     violationsCoveredCount: covered.length,
-    dataAsOf: records[0]?.address.asOf ?? null,
+    dataAsOf: snap.dataAsOf,
+    county: snap.county,
+    countyName: snap.countyName,
+    source: snap.source,
     elapsedMs: Date.now() - started,
   };
-}
-
-// ---------- Zip snapshot (Market + Buyers) ----------
-
-export interface ZipSnapshot {
-  records: PropertyRecord[];
-  total: number;
-  truncated: boolean;
-  dataAsOf: string | null;
-  elapsedMs: number;
-}
-
-/** Every residential parcel in a zip code. Shared by the Market and Buyers screens (cached 6 hours). */
-export async function zipSnapshot(zip: string, types: PropertyType[]): Promise<ZipSnapshot> {
-  const started = Date.now();
-  const { records, total, truncated } = await ownershipFor(COUNTY)!.listByZip(zip, { types, max: 30_000 });
-  return { records, total, truncated, dataAsOf: records[0]?.address.asOf ?? null, elapsedMs: Date.now() - started };
 }

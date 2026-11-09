@@ -7,7 +7,7 @@ import { Fact, ScoreRing, Src, TYPE_LABEL, Val } from "@/components/ui";
 import { formatFolio } from "@/lib/address";
 import { titleCase } from "@/lib/analysis/florida";
 import { parseLang, t } from "@/lib/i18n";
-import { buildReport, type DealReport } from "@/lib/report";
+import { buildReport, isPropertyId, type DealReport } from "@/lib/report";
 import { fmtDate, fmtMoney, fmtNum } from "@/lib/sourced";
 
 export const dynamic = "force-dynamic";
@@ -34,8 +34,8 @@ function yesNo(v: boolean | null): string {
 }
 
 export default async function PropertyPage({ params }: { params: Promise<{ folio: string }> }) {
-  const { folio } = await params;
-  if (!/^\d{13}$/.test(folio)) notFound();
+  const folio = decodeURIComponent((await params).folio);
+  if (!isPropertyId(folio)) notFound();
   const lang = parseLang((await cookies()).get("lang")?.value);
   const L = (en: string, es: string) => (lang === "es" ? es : en);
 
@@ -72,14 +72,15 @@ export default async function PropertyPage({ params }: { params: Promise<{ folio
             </div>
             <h1 className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">{title}</h1>
             <div className="muted mt-1 text-[15px]">
-              {cityLine} · Miami-Dade County · Folio <span className="num">{formatFolio(p.folio)}</span>
+              {cityLine} · {p.countyName} County · {L("Parcel", "Parcela")} <span className="num">{formatFolio(p.parcelId)}</span>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               {o.absentee ? <span className="pill pill-warn">Absentee owner</span> : null}
               {o.outOfState ? <span className="pill pill-warn">{o.outOfCountry ? "Owner abroad" : "Out-of-state owner"}</span> : null}
               {o.kind !== "individual" && o.kind !== "unknown" ? <span className="pill">{OWNER_KIND[o.kind]}</span> : null}
               {open.length ? <span className="pill pill-bad">{open.length} open county case{open.length === 1 ? "" : "s"}</span> : null}
-              {!report.violationsCovered ? <span className="pill pill-muted">Violations: not covered (city)</span> : null}
+              {!report.violationsCovered ? <span className="pill pill-muted">Violations: no data here</span> : null}
+              {p.homestead.value === false && o.kind === "individual" ? <span className="pill pill-warn">No homestead exemption</span> : null}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -138,8 +139,11 @@ export default async function PropertyPage({ params }: { params: Promise<{ folio
             <Fact label={`Assessed value${p.assessmentYear.value ? ` (${p.assessmentYear.value})` : ""}`}>
               <Val s={p.assessedValue} format={fmtMoney} />
             </Fact>
+            <Fact label={L("Appraiser market value", "Valor de mercado (tasador)")}>
+              <Val s={p.justValue} format={fmtMoney} />
+            </Fact>
             <Fact label={L("Last deed transfer","Último traspaso de escritura")}>
-              <Val s={p.lastTransferDate} format={fmtDate} unknown="None on record" />
+              <Val s={p.lastTransferDate} format={fmtDate} unknown={p.olderTransfersUnknown ? "None since 2024" : "None on record"} />
             </Fact>
             <Fact label={L("Transfer price","Precio del traspaso")}>
               <span className="num">
@@ -164,7 +168,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ folio
             </Fact>
           </div>
           <div className="card-flat mt-4 text-sm">
-            <strong>Not available from the free data:</strong> zoning, HOA details, current tax bill, homestead status, mortgages and liens, equity, photos.
+            <strong>Not available from the free data:</strong> zoning, HOA details, current tax bill, mortgages and liens, equity, photos{p.county === "miami-dade" ? "" : ", bedrooms and bathrooms, sales older than about two years"}.
             These show as Unknown until the paid or clerk adapters are switched on.
           </div>
         </section>
@@ -230,8 +234,11 @@ export default async function PropertyPage({ params }: { params: Promise<{ folio
                 <span>{yesNo(o.outOfState)}</span>
               </div>
               <div className="row !py-0.5">
-                <span>Homestead</span>
-                <span className="muted">Unknown</span>
+                <span>{L("Homestead exemption", "Exención de homestead")}</span>
+                <span>
+                  {p.homestead.value === null ? <span className="muted">Unknown</span> : p.homestead.value ? "Yes" : "No"}
+                  {p.homestead.value !== null ? <Src source={p.homestead.source} asOf={p.homestead.asOf} note={p.homestead.note} /> : null}
+                </span>
               </div>
               <div className="row !py-0.5">
                 <span>{L("Mortgage / equity","Hipoteca / capital")}</span>
@@ -252,8 +259,9 @@ export default async function PropertyPage({ params }: { params: Promise<{ folio
           {!report.violationsCovered ? (
             <p className="mt-2 text-sm">
               <span className="pill pill-muted mr-2">Unknown</span>
-              This property is in {p.city.value ? titleCase(p.city.value) : "a city"}, which runs its own code enforcement. The county’s violation data only covers
-              unincorporated Miami-Dade, so nothing can be said here either way.
+              {p.county === "miami-dade"
+                ? `This property is in ${p.city.value ? titleCase(p.city.value) : "a city"}, which runs its own code enforcement. The county's violation data only covers unincorporated Miami-Dade, so nothing can be said here either way.`
+                : `No code-violation data source is connected for ${p.countyName} County yet, so nothing can be said here either way.`}
             </p>
           ) : report.signals.length === 0 ? (
             <p className="mt-2 text-sm">

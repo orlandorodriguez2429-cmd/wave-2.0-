@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DistressSignal, PropertyRecord, SaleComp } from "@/lib/adapters/types";
 import { typeFromUseCode } from "@/lib/adapters/miami-dade";
 import { formatFolio, parseQuery, streetCandidates } from "@/lib/address";
+import { streetNameTokens } from "@/lib/report";
 import { sourced } from "@/lib/sourced";
 import { estimateValue, isMarketSale, percentile, usableComps } from "./comps";
 import { deedDocStamps, floridaGotchas } from "./florida";
@@ -25,6 +26,12 @@ const s = <T>(v: T | null) => sourced<T>(v, meta);
 function prop(over: Partial<Record<string, unknown>> = {}): PropertyRecord {
   const base: PropertyRecord = {
     county: "miami-dade",
+    countyName: "Miami-Dade",
+    parcelId: "x",
+    justValue: s<number>(null),
+    homestead: s<boolean>(null),
+    lastTransferQualified: null,
+    olderTransfersUnknown: false,
     folio: "3012340000010",
     address: s("123 SW 5 ST"),
     unit: s<string>(null),
@@ -89,6 +96,11 @@ describe("address parsing", () => {
       "123 SW 5",
     ]);
   });
+  it("reduces a street to its identifying words so 15th Ave cannot match 14th Ave", () => {
+    expect(streetNameTokens(["SW", "15TH", "AVE", "FORT", "LAUDERDALE"])).toEqual(["15", "FORT", "LAUDERDALE"]);
+    expect(streetNameTokens(["SW", "14", "AVE"])).toEqual(["14"]);
+    expect(streetNameTokens(["N", "OLIVE", "AVE"])).toEqual(["OLIVE"]);
+  });
   it("recognizes folio numbers with or without dashes", () => {
     expect(parseQuery("04-2016-006-1320")).toEqual({ kind: "folio", folio: "0420160061320" });
     expect(formatFolio("0420160061320")).toBe("04-2016-006-1320");
@@ -112,6 +124,12 @@ describe("owner intelligence", () => {
   it("treats a condo mailing address with the unit appended as owner-occupied", () => {
     const o = analyzeOwner(prop({ address: s("100 BAYVIEW DR"), mailingAddress: s("100 BAYVIEW DR 1204") }), today);
     expect(o.absentee).toBe(false);
+  });
+  it("does not call an owner absentee over a zip mismatch alone when street and city match", () => {
+    const o = analyzeOwner(prop({ zip: s("33312"), mailingZip: s("33321"), city: s("TAMARAC"), mailingCity: s("Tamarac") }), today);
+    expect(o.absentee).toBe(false);
+    const other = analyzeOwner(prop({ zip: s("33312"), mailingZip: s("33321"), city: s("TAMARAC"), mailingCity: s("MIAMI") }), today);
+    expect(other.absentee).toBe(true);
   });
   it("returns Unknown (null) when data is missing instead of guessing", () => {
     const o = analyzeOwner(prop({ mailingAddress: s<string>(null), mailingState: s<string>(null), lastTransferDate: s<string>(null) }), today);
@@ -182,6 +200,13 @@ describe("Florida costs", () => {
     expect(g.find((x) => x.key === "flood")?.status).toBe("unknown");
     expect(g.some((x) => x.key === "condo")).toBe(true);
     expect(g.some((x) => x.key === "recert")).toBe(true);
+  });
+});
+
+describe("state-qualified sales", () => {
+  it("trusts the state's qualification code over the price test", () => {
+    expect(isMarketSale(comp({ price: 90_000, assessedValue: 300_000, qualified: true }))).toBe(true);
+    expect(isMarketSale(comp({ price: 450_000, qualified: false }))).toBe(false);
   });
 });
 

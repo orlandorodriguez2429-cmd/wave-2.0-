@@ -8,7 +8,7 @@ import { findLeads, type LeadResult } from "@/lib/report";
 import { fmtDate, fmtNum } from "@/lib/sourced";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const TYPES: PropertyType[] = ["single_family", "condo", "townhouse", "duplex", "multifamily_small", "multifamily_large", "vacant_land"];
 
@@ -39,7 +39,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
   return (
     <div className="stagger flex flex-col gap-5">
       <section className="card">
-        <div className="h-eyebrow">Miami-Dade</div>
+        <div className="h-eyebrow">{result?.countyName ? `${result.countyName} County` : "Florida"}</div>
         <h1 className="mt-1 text-3xl font-bold tracking-tight">{t(lang, "leads.title")}</h1>
         <p className="muted mt-1">{t(lang, "leads.sub")}</p>
 
@@ -71,7 +71,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         </form>
         {zipInvalid ? <p className="text-bad mt-2 text-sm">Enter a 5-digit zip code.</p> : null}
         <p className="muted mt-3 text-xs">
-          A full zip code is scored live from county data, which takes about 20–60 seconds the first time and is then reused for 6 hours.
+          A full zip code is scored live. Miami-Dade takes about 20–60 seconds the first time; other counties use the slower state service and can take 1–6 minutes. Results are then reused for 6 hours.
         </p>
       </section>
 
@@ -91,8 +91,8 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
               {result.matched > result.leads.length ? <span className="muted text-sm font-normal"> · showing the top {result.leads.length}</span> : null}
             </div>
             <div className="muted text-xs">
-              Scanned {result.scanned.toLocaleString("en-US")} of {result.totalInZip.toLocaleString("en-US")} parcels in {(result.elapsedMs / 1000).toFixed(1)}s · Property
-              Appraiser data updated {fmtDate(result.dataAsOf)}
+              Scanned {result.scanned.toLocaleString("en-US")} of {result.totalInZip.toLocaleString("en-US")} parcels in {(result.elapsedMs / 1000).toFixed(1)}s ·{" "}
+              {result.source ?? "Source unknown"}, updated {fmtDate(result.dataAsOf)}
             </div>
           </div>
 
@@ -103,11 +103,13 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
             </p>
           ) : null}
           <p className="muted mt-2 text-sm">
-            {result.violationsCoveredCount === 0
-              ? "Every parcel scanned is inside a city, so county violation data does not apply here. Scores use ownership signals only."
-              : result.violationsCoveredCount < result.scanned
-                ? `County violation data covers ${result.violationsCoveredCount.toLocaleString("en-US")} of the scanned parcels (the unincorporated ones). City parcels are scored on ownership signals only.`
-                : "County violation data covers all scanned parcels."}{" "}
+            {result.county !== "miami-dade"
+              ? `No violation data is connected for ${result.countyName ?? "this"} County, and the state roll only lists sales from about the last two years, so long ownership cannot be scored. Scores here use absentee and out-of-state ownership only.`
+              : result.violationsCoveredCount === 0
+                ? "Every parcel scanned is inside a city, so county violation data does not apply here. Scores use ownership signals only."
+                : result.violationsCoveredCount < result.scanned
+                  ? `County violation data covers ${result.violationsCoveredCount.toLocaleString("en-US")} of the scanned parcels (the unincorporated ones). City parcels are scored on ownership signals only.`
+                  : "County violation data covers all scanned parcels."}{" "}
             Pre-foreclosure, tax delinquency, probate, vacancy and equity are not checked yet.
           </p>
 
@@ -156,6 +158,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
                         <td className="text-[13px]">
                           {l.owner ?? "Unknown"}
                           {l.ownerKind !== "individual" && l.ownerKind !== "unknown" ? <div className="muted text-xs">{l.ownerKind}</div> : null}
+                          {l.homestead === false && l.ownerKind === "individual" ? <div className="text-warn text-xs">no homestead</div> : null}
                         </td>
                         <td className="num text-right">
                           {l.beds ?? "—"}/{l.baths ?? "—"}

@@ -29,7 +29,7 @@ async function cached<T>(key: string, ttl: number, load: () => Promise<T>): Prom
   return value;
 }
 
-async function post(url: string, params: Record<string, string>): Promise<Record<string, unknown>> {
+async function post(url: string, params: Record<string, string>, timeoutMs = 30_000): Promise<Record<string, unknown>> {
   const body = new URLSearchParams({ ...params, f: "json" });
   let lastErr: unknown;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -38,7 +38,7 @@ async function post(url: string, params: Record<string, string>): Promise<Record
         method: "POST",
         headers: { "content-type": "application/x-www-form-urlencoded" },
         body,
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.timeout(timeoutMs),
         cache: "no-store",
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -72,12 +72,22 @@ export interface QueryOpts {
   pageSize?: number;
   /** Start row. When set, exactly one page is fetched (used for parallel paging). */
   offset?: number;
+  /** Ask only for the bounding box of the matching features. */
+  returnExtentOnly?: boolean;
+  timeoutMs?: number;
+}
+
+export interface Extent {
+  xmin: number;
+  ymin: number;
+  xmax: number;
+  ymax: number;
 }
 
 export async function queryLayer(
   layerUrl: string,
   opts: QueryOpts,
-): Promise<{ features: Feature[]; truncated: boolean }> {
+): Promise<{ features: Feature[]; truncated: boolean; extent?: Extent | null }> {
   const max = opts.max ?? 2000;
   const pageSize = Math.min(opts.pageSize ?? 2000, max);
   const base: Record<string, string> = {
@@ -87,6 +97,7 @@ export async function queryLayer(
     outSR: "4326",
   };
   if (opts.orderBy) base.orderByFields = opts.orderBy;
+  if (opts.returnExtentOnly) base.returnExtentOnly = "true";
   if (opts.geometry) {
     base.geometry = opts.geometry;
     base.geometryType = opts.geometryType ?? "esriGeometryPoint";
@@ -102,6 +113,13 @@ export async function queryLayer(
   }
   const key = `${layerUrl}|${JSON.stringify(base)}|${max}|${pageSize}|${opts.offset ?? "all"}`;
   return cached(key, FREE_TTL_MS, async () => {
+    if (opts.returnExtentOnly) {
+      const json = await post(`${layerUrl}/query`, base, opts.timeoutMs);
+      recordCall(opts.adapterId);
+      const e = json.extent as Extent | undefined;
+      const ok = e && [e.xmin, e.ymin, e.xmax, e.ymax].every((n) => typeof n === "number" && Number.isFinite(n));
+      return { features: [], truncated: false, extent: ok ? e : null };
+    }
     const features: Feature[] = [];
     let offset = opts.offset ?? 0;
     let truncated = false;
@@ -110,7 +128,7 @@ export async function queryLayer(
         ...base,
         resultOffset: String(offset),
         resultRecordCount: String(Math.min(pageSize, max - features.length)),
-      });
+      }, opts.timeoutMs);
       recordCall(opts.adapterId);
       const page = (json.features as Feature[] | undefined) ?? [];
       features.push(...page);

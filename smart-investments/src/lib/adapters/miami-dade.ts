@@ -110,7 +110,9 @@ function toRecord(f: Feature, asOf: string | null, fetchedAt: string): PropertyR
   const price = typeof a.PRICE_1 === "number" ? a.PRICE_1 : null;
   return {
     county: "miami-dade",
+    countyName: "Miami-Dade",
     folio: String(a.FOLIO).trim(),
+    parcelId: String(a.FOLIO).trim(),
     address: s(str(a.TRUE_SITE_ADDR_NO_UNIT)),
     unit: s(str(a.TRUE_SITE_UNIT)),
     city: s(str(a.TRUE_SITE_CITY)),
@@ -136,9 +138,13 @@ function toRecord(f: Feature, asOf: string | null, fetchedAt: string): PropertyR
     lotSqft: s(posNum(a.LOT_SIZE)),
     yearBuilt: s(posNum(a.YEAR_BUILT)),
     assessedValue: s(posNum(a.ASSESSED_VAL_CUR)),
+    justValue: s<number>(null),
     assessmentYear: s(posNum(a.ASSESSMENT_YEAR_CUR)),
+    homestead: s<boolean>(null),
     lastTransferDate: s(isoFromMs(a.DATEOFSALE_UTC)),
     lastTransferPrice: s(price, "Recorded price of the last deed transfer. $0 or $100 means a non-market transfer."),
+    lastTransferQualified: null,
+    olderTransfersUnknown: false,
   };
 }
 

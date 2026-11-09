@@ -5,16 +5,18 @@
 import { femaInfo } from "./fema";
 import { miamiDadeDistress, miamiDadeOwnership, miamiDadeSales } from "./miami-dade";
 import type { AdapterInfo, County, DistressAdapter, OwnershipAdapter, SalesAdapter } from "./types";
+import { statewideOwnership, statewideSales } from "./statewide";
 import { getUsage } from "./usage";
 
-export function ownershipFor(county: County): OwnershipAdapter | null {
-  return county === "miami-dade" ? miamiDadeOwnership : null;
+export function ownershipFor(county: County): OwnershipAdapter {
+  return county === "miami-dade" ? miamiDadeOwnership : statewideOwnership;
 }
 
-export function salesFor(county: County): SalesAdapter | null {
-  return county === "miami-dade" ? miamiDadeSales : null;
+export function salesFor(county: County): SalesAdapter {
+  return county === "miami-dade" ? miamiDadeSales : statewideSales;
 }
 
+/** null when no violation source exists for the county. */
 export function distressFor(county: County): DistressAdapter | null {
   return county === "miami-dade" ? miamiDadeDistress : null;
 }
@@ -65,24 +67,14 @@ const planned: AdapterInfo[] = [
     note: "Not built yet. Needs your board's data license and broker approval for back-office use.",
   },
   {
-    id: "broward",
-    name: "Broward County property data",
-    dataTypes: ["ownership", "sales"],
+    id: "county-violations",
+    name: "Broward and Palm Beach code violations",
+    dataTypes: ["distress"],
     tier: "free",
     costPerCall: 0,
     enabled: false,
-    coverage: "Broward County",
-    note: "Not built yet (Phase 5).",
-  },
-  {
-    id: "palm-beach",
-    name: "Palm Beach County property data",
-    dataTypes: ["ownership", "sales"],
-    tier: "free",
-    costPerCall: 0,
-    enabled: false,
-    coverage: "Palm Beach County",
-    note: "Not built yet (Phase 5).",
+    coverage: "Broward, Palm Beach",
+    note: "Not built yet. No open bulk source found; both counties cover unincorporated areas only.",
   },
 ];
 
@@ -94,7 +86,7 @@ export interface AdapterStatus extends AdapterInfo {
 }
 
 export function listAdapters(): AdapterStatus[] {
-  const live = [miamiDadeOwnership.info, miamiDadeSales.info, miamiDadeDistress.info, femaInfo];
+  const live = [miamiDadeOwnership.info, miamiDadeSales.info, miamiDadeDistress.info, statewideOwnership.info, femaInfo];
   return [...live, ...planned].map((info) => {
     const u = getUsage(info.id);
     return {

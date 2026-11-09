@@ -8,7 +8,7 @@ export default async function Home() {
   return (
     <div className="stagger flex flex-col gap-6">
       <section className="card !p-8 sm:!p-12">
-        <div className="h-eyebrow">Miami-Dade · {lang === "es" ? "datos públicos oficiales" : "official public data"}</div>
+        <div className="h-eyebrow">Florida · {lang === "es" ? "datos públicos oficiales" : "official public data"}</div>
         <h1 className="mt-2 text-4xl font-bold tracking-tight sm:text-5xl">{t(lang, "home.title")}</h1>
         <p className="muted mt-3 max-w-2xl text-lg">{t(lang, "home.sub")}</p>
         <div className="mt-6 max-w-3xl">

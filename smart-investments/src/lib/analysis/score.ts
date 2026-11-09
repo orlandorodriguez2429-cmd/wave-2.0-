@@ -122,7 +122,7 @@ export function motivationScore(args: {
   }
 
   const notChecked = [...NOT_CHECKED_FREE_TIER];
-  if (!args.violationsCovered) notChecked.unshift("Code and building violations (city property; county data does not cover it)");
+  if (!args.violationsCovered) notChecked.unshift("Code and building violations (city property or no source for this county)");
 
   const score = Math.min(100, reasons.reduce((sum, r) => sum + r.points, 0));
   return { score, reasons: reasons.sort((a, b) => b.points - a.points), notChecked };

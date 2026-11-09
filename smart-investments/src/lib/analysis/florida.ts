@@ -13,7 +13,7 @@ import type { County, PropertyType } from "@/lib/adapters/types";
 export function deedDocStamps(price: number, county: County, type: PropertyType): number {
   if (!(price > 0)) return 0;
   const hundreds = Math.ceil(price / 100);
-  if (county === "miami-dade") {
+  if (county === "miami-dade" || county === "fl-23") {
     const singleFamilyResidence = type === "single_family" || type === "condo" || type === "townhouse";
     return round2(hundreds * 0.6 + (singleFamilyResidence ? 0 : hundreds * 0.45));
   }
@@ -48,6 +48,8 @@ export function floridaGotchas(args: {
   violationsCovered: boolean;
   openViolationCount: number;
   city: string | null;
+  county?: string;
+  countyName?: string;
   flood?: { zone: string; subtype: string | null; sfha: boolean | null } | null;
   today?: Date;
 }): Gotcha[] {
@@ -133,7 +135,10 @@ export function floridaGotchas(args: {
           key: "violations",
           title: "Open violations and permits transfer with the property",
           status: "unknown",
-          detail: `Violations: Unknown. This property is inside ${args.city ? titleCase(args.city) : "a city"}, which runs its own code enforcement; county data does not cover it. Order a municipal lien and open-permit search before closing.`,
+          detail:
+            (args.county ?? "miami-dade") === "miami-dade"
+              ? `Violations: Unknown. This property is inside ${args.city ? titleCase(args.city) : "a city"}, which runs its own code enforcement; county data does not cover it. Order a municipal lien and open-permit search before closing.`
+              : `Violations: Unknown. No code-violation data source is connected for ${args.countyName ?? "this"} County yet. Order a municipal lien and open-permit search before closing.`,
         },
   );
 

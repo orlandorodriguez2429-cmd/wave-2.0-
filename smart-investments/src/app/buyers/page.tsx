@@ -8,7 +8,7 @@ import { zipSnapshot, type ZipSnapshot } from "@/lib/report";
 import { fmtDate, fmtMoney } from "@/lib/sourced";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export default async function BuyersPage({ searchParams }: { searchParams: Promise<{ zip?: string; type?: string }> }) {
   const sp = await searchParams;
@@ -35,7 +35,7 @@ export default async function BuyersPage({ searchParams }: { searchParams: Promi
   return (
     <div className="stagger flex flex-col gap-5">
       <section className="card">
-        <div className="h-eyebrow">Miami-Dade</div>
+        <div className="h-eyebrow">{snap?.countyName ? `${snap.countyName} County` : "Florida"}</div>
         <h1 className="mt-1 text-3xl font-bold tracking-tight">{es ? "Compradores activos" : "Active buyers"}</h1>
         <p className="muted mt-1">
           {es
@@ -79,7 +79,7 @@ export default async function BuyersPage({ searchParams }: { searchParams: Promi
               {buyers.length > shown.length ? <span className="muted text-sm font-normal"> · {es ? "primeros" : "top"} {shown.length}</span> : null}
             </div>
             <div className="muted text-xs">
-              Miami-Dade Property Appraiser, {es ? "datos al" : "updated"} {fmtDate(snap.dataAsOf)}
+              {snap.source}, {es ? "datos al" : "updated"} {fmtDate(snap.dataAsOf)}
             </div>
           </div>
 

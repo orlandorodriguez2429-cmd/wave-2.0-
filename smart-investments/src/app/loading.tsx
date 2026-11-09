@@ -4,7 +4,7 @@ export default function Loading() {
       <div className="spinner" />
       <div>
         <div className="font-semibold">Pulling county records…</div>
-        <div className="muted text-sm">Live lookups from Miami-Dade open data usually take 2–10 seconds.</div>
+        <div className="muted text-sm">Live lookups from county and state open data usually take 2–15 seconds. A whole zip code outside Miami-Dade can take 1–6 minutes the first time.</div>
       </div>
     </div>
   );

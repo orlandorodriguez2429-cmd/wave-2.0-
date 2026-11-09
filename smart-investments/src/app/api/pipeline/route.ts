@@ -2,7 +2,7 @@
 // Plain form posts are used instead of Server Actions so they also work behind
 // forwarded preview hosts. Replace with authenticated Supabase writes later.
 
-import { buildReport } from "@/lib/report";
+import { buildReport, isPropertyId } from "@/lib/report";
 import { removeLead, saveLead, updateLead, type Stage } from "@/lib/store";
 
 function back(to: string): Response {
@@ -12,7 +12,7 @@ function back(to: string): Response {
 export async function POST(request: Request): Promise<Response> {
   const form = await request.formData();
   const folio = String(form.get("folio") ?? "");
-  if (!/^\d{13}$/.test(folio)) return new Response("Bad folio", { status: 400 });
+  if (!isPropertyId(folio)) return new Response("Bad folio", { status: 400 });
   const action = String(form.get("_action") ?? "");
 
   if (action === "save") {

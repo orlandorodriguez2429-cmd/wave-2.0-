@@ -4,7 +4,8 @@
 
 import type { Sourced } from "@/lib/sourced";
 
-export type County = "miami-dade" | "broward" | "palm-beach";
+/** "miami-dade" (own weekly source) or "fl-<DOR county number>" for every other Florida county. */
+export type County = string;
 
 export type PropertyType =
   | "single_family"
@@ -19,7 +20,11 @@ export type PropertyType =
 
 export interface PropertyRecord {
   county: County;
+  countyName: string;
+  /** Route id. Miami-Dade: the 13-digit folio. Elsewhere: "fl-<county number>-<parcel id>". */
   folio: string;
+  /** The parcel number as the county writes it. */
+  parcelId: string;
   address: Sourced<string>;
   unit: Sourced<string>;
   city: Sourced<string>;
@@ -45,10 +50,17 @@ export interface PropertyRecord {
   lotSqft: Sourced<number>;
   yearBuilt: Sourced<number>;
   assessedValue: Sourced<number>;
+  /** The appraiser's market ("just") value. Only on the state roll. */
+  justValue: Sourced<number>;
   assessmentYear: Sourced<number>;
+  homestead: Sourced<boolean>;
   /** Last recorded deed transfer. Includes $0/$100 family or entity transfers, so it is not always a market sale. */
   lastTransferDate: Sourced<string>;
   lastTransferPrice: Sourced<number>;
+  /** State sale-qualification result when the source has one; null means use the price test. */
+  lastTransferQualified: boolean | null;
+  /** True when the source only reports recent sales, so "no sale on record" does not mean long ownership. */
+  olderTransfersUnknown: boolean;
 }
 
 export interface SaleComp {
@@ -64,6 +76,8 @@ export interface SaleComp {
   yearBuilt: number | null;
   assessedValue: number | null;
   distanceMiles: number | null;
+  /** True when the source itself marks the sale as arm's-length. */
+  qualified?: boolean | null;
 }
 
 export type DistressType =
