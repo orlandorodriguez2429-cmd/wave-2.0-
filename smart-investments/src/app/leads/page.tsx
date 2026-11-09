@@ -71,7 +71,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         </form>
         {zipInvalid ? <p className="text-bad mt-2 text-sm">Enter a 5-digit zip code.</p> : null}
         <p className="muted mt-3 text-xs">
-          A full zip code is scored live from county data, which takes about 20–30 seconds the first time and is then reused for 6 hours.
+          A full zip code is scored live from county data, which takes about 20–60 seconds the first time and is then reused for 6 hours.
         </p>
       </section>
 

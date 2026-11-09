@@ -1,5 +1,6 @@
 // Assembles everything the Deal Report and the Lead Finder need from the adapters.
 
+import { floodZoneAt, type FloodZone } from "@/lib/adapters/fema";
 import { distressFor, ownershipFor, salesFor } from "@/lib/adapters/registry";
 import type { DistressSignal, PropertyRecord, PropertyType, SaleComp } from "@/lib/adapters/types";
 import { parseQuery, streetCandidates } from "@/lib/address";
@@ -97,6 +98,9 @@ export interface DealReport {
   compTierLabel: string | null;
   compSource: string;
   value: ValueEstimate | null;
+  flood: FloodZone | null;
+  /** True when FEMA could not be reached (as opposed to answering "no mapped zone"). */
+  floodLookupFailed: boolean;
   gotchas: Gotcha[];
   approach: Approach;
   generatedAt: string;
@@ -137,9 +141,16 @@ export async function buildReport(folio: string): Promise<DealReport | null> {
   if (!property) return null;
 
   const violationsCovered = distress.covers(folio);
-  const [signals, compResult] = await Promise.all([
+  let floodLookupFailed = false;
+  const [signals, compResult, flood] = await Promise.all([
     violationsCovered ? distress.getForFolio(folio) : Promise.resolve([] as DistressSignal[]),
     findComps(property),
+    property.lat !== null && property.lng !== null
+      ? floodZoneAt(property.lat, property.lng).catch(() => {
+          floodLookupFailed = true;
+          return null;
+        })
+      : Promise.resolve(null),
   ]);
 
   const owner = analyzeOwner(property);
@@ -161,6 +172,7 @@ export async function buildReport(folio: string): Promise<DealReport | null> {
     violationsCovered,
     openViolationCount: signals.filter((s) => s.open).length,
     city: property.city.value,
+    flood,
   });
 
   const fullAddress = [property.address.value, property.unit.value ? `#${property.unit.value}` : null]
@@ -178,6 +190,8 @@ export async function buildReport(folio: string): Promise<DealReport | null> {
     compTierLabel: compResult.tierIndex === null ? null : COMP_TIERS[compResult.tierIndex].label,
     compSource: salesFor(COUNTY)!.info.name,
     value,
+    flood,
+    floodLookupFailed,
     gotchas,
     approach: buildApproach({ address: fullAddress || "the property", owner, signals }),
     generatedAt: new Date().toISOString(),
@@ -228,7 +242,7 @@ export async function findLeads(search: LeadSearch): Promise<LeadResult> {
   const ownership = ownershipFor(COUNTY)!;
   const distress = distressFor(COUNTY)!;
 
-  const { records, truncated, total } = await ownership.listByZip(search.zip, { types: search.types, max: 12_000 });
+  const { records, truncated, total } = await ownership.listByZip(search.zip, { types: search.types, max: 30_000 });
 
   const covered = records.filter((r) => distress.covers(r.folio) && r.lat !== null && r.lng !== null);
   const byFolio = new Map<string, DistressSignal[]>();

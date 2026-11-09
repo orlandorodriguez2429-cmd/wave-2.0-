@@ -13,6 +13,7 @@ list are in [`../docs/research.md`](../docs/research.md).
 | Analyzer (`/`) | Type an address or 13-digit folio. Handles "West 32nd Way" style input, unit numbers, and offers a pick list when several parcels match. |
 | Deal Report (`/property/[folio]`) | Owner and mailing address, absentee / out-of-state / company flags, building facts, last deed transfer, county violations, motivation score with reasons, value estimate from recent recorded sales with a comp list you can untick, six exit strategies that recalculate as you type, Florida checks, and an English + Spanish call script and letter. "Export PDF" prints a clean copy. |
 | Lead Finder (`/leads`) | Scores every parcel in a zip code and lists the highest, each with its reasons. |
+| Pipeline (`/pipeline`) | Leads saved from a report, grouped by stage, with investor/agent hat and notes. **Test storage only**: a JSON file in `.data/`, no login, not for Vercel. |
 | Data (`/data`) | Which adapters are on, what each covers, calls made, and the score weights. |
 
 English/Spanish and light/dark toggles are in the top bar.
@@ -23,9 +24,10 @@ English/Spanish and light/dark toggles are in the top bar.
 |---|---|---|---|
 | Miami-Dade Property Appraiser "Property Point View" (county open data) | Owner, mailing address, beds/baths/size, year, assessed value, last deed transfer | Weekly | No homestead flag, no mortgages, only the latest transfer |
 | Miami-Dade Code Compliance + Building Violations (county open data) | Open/closed cases, liens, unsafe structures, expired permits, foreclosed-property registry | Daily | **Unincorporated county only.** City parcels (Hialeah, Miami, …) show "Unknown" |
+| FEMA National Flood Hazard Layer | Flood zone at the parcel's center point | FEMA-maintained | Service sometimes drops connections; then the zone shows "Unknown". Not a lender flood determination |
 | U.S. Census geocoder | Fallback address match | — | — |
 
-Shown as "Unknown" until a source is connected: flood zone, zoning, rent, insurance, taxes actually
+Shown as "Unknown" until a source is connected: zoning, rent, insurance, taxes actually
 billed, homestead, mortgages and equity, lis pendens, tax delinquency, probate, vacancy, listings.
 
 ## Rules the code follows
@@ -57,16 +59,16 @@ npm test
 npm run check:addresses -- "10236 W 32 Way, Hialeah" "30-6019-011-4460"
 ```
 
-No keys are needed for the free tier. If outbound traffic goes through a proxy, start Node with
-`NODE_USE_ENV_PROXY=1`. Deploy to Vercel with this folder as the project root.
+No keys are needed for the free tier. Inside a Claude Code cloud session, where outbound traffic
+goes through a proxy, use `npm run cloud` instead (builds and serves on port 3100). Deploy to Vercel with this folder as the project root.
 
 ## Not built yet
 
 - Supabase: `supabase/migrations/0001_init.sql` is written but has **not been applied or tested**;
-  there is no login, nothing is saved, and the cache and call counts live in memory.
+  there is no login, the pipeline is a local test file, and the cache and call counts live in memory.
 - Scheduled ingest. Lookups hit the county services live (2–10 s per property, 20–30 s per zip).
   Loading the weekly file into the database is what makes this fast and enables change alerts.
-- Broward and Palm Beach, map view, saved searches and alerts, pipeline/CRM, skip tracing,
+- Broward and Palm Beach, map view, saved searches and alerts, the real CRM (tasks, outreach log, partner assignment), skip tracing,
   buyers list, agent tools, market dashboard, AI assistant, photo or listing-link input.
 - Paid adapters (RentCast, Clerk records, skip tracing, MLS) are listed on the Data page but have no code.
 

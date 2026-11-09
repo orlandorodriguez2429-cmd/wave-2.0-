@@ -48,6 +48,7 @@ export function floridaGotchas(args: {
   violationsCovered: boolean;
   openViolationCount: number;
   city: string | null;
+  flood?: { zone: string; subtype: string | null; sfha: boolean | null } | null;
   today?: Date;
 }): Gotcha[] {
   const year = (args.today ?? new Date()).getUTCFullYear();
@@ -64,13 +65,30 @@ export function floridaGotchas(args: {
       (args.assessedValue ? ` Current assessed value: $${args.assessedValue.toLocaleString("en-US")}.` : ""),
   });
 
-  out.push({
-    key: "flood",
-    title: "Flood zone and flood insurance",
-    status: "unknown",
-    detail:
-      "Flood zone: Unknown. The FEMA adapter is not connected yet. Check the FEMA Flood Map Service Center and get a flood quote before making an offer.",
-  });
+  const fl = args.flood ?? null;
+  if (!fl) {
+    out.push({
+      key: "flood",
+      title: "Flood zone and flood insurance",
+      status: "unknown",
+      detail:
+        "Flood zone: Unknown. FEMA returned no mapped zone for this parcel, or its service did not answer. Check the FEMA Flood Map Service Center and get a flood quote before making an offer.",
+    });
+  } else if (fl.sfha) {
+    out.push({
+      key: "flood",
+      title: `Flood zone ${fl.zone}: high-risk area`,
+      status: "warning",
+      detail: `FEMA maps the center of this parcel in zone ${fl.zone}, a Special Flood Hazard Area. Lenders require flood insurance here. Get a flood quote and ask for an elevation certificate before making an offer; the premium can change the deal.`,
+    });
+  } else {
+    out.push({
+      key: "flood",
+      title: `Flood zone ${fl.zone}${fl.subtype ? ` (${fl.subtype.toLowerCase()})` : ""}`,
+      status: "info",
+      detail: `FEMA maps the center of this parcel in zone ${fl.zone}, outside the Special Flood Hazard Area, so lenders do not require flood insurance. South Florida still floods outside mapped zones: price a flood policy anyway.`,
+    });
+  }
 
   out.push({
     key: "wind",

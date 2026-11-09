@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "cloud": "NODE_USE_ENV_PROXY=1 next build && NODE_USE_ENV_PROXY=1 next start -p 3100",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "check:addresses": "tsx scripts/check-addresses.ts"

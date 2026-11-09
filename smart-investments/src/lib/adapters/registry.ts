@@ -2,6 +2,7 @@
 // will switch them on; until their code is written they stay "not built" rather than
 // pretending to return data.
 
+import { femaInfo } from "./fema";
 import { miamiDadeDistress, miamiDadeOwnership, miamiDadeSales } from "./miami-dade";
 import type { AdapterInfo, County, DistressAdapter, OwnershipAdapter, SalesAdapter } from "./types";
 import { getUsage } from "./usage";
@@ -64,16 +65,6 @@ const planned: AdapterInfo[] = [
     note: "Not built yet. Needs your board's data license and broker approval for back-office use.",
   },
   {
-    id: "fema-nfhl",
-    name: "FEMA flood zones",
-    dataTypes: ["flood zone"],
-    tier: "free",
-    costPerCall: 0,
-    enabled: false,
-    coverage: "Nationwide",
-    note: "Not built yet. FEMA's map service refused connections during the 11/09/2026 build; flood zone shows as Unknown.",
-  },
-  {
     id: "broward",
     name: "Broward County property data",
     dataTypes: ["ownership", "sales"],
@@ -103,7 +94,7 @@ export interface AdapterStatus extends AdapterInfo {
 }
 
 export function listAdapters(): AdapterStatus[] {
-  const live = [miamiDadeOwnership.info, miamiDadeSales.info, miamiDadeDistress.info];
+  const live = [miamiDadeOwnership.info, miamiDadeSales.info, miamiDadeDistress.info, femaInfo];
   return [...live, ...planned].map((info) => {
     const u = getUsage(info.id);
     return {

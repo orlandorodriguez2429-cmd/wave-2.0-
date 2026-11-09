@@ -34,6 +34,7 @@ export function Nav({ lang }: { lang: Lang }) {
   const links = [
     { href: "/", label: t(lang, "nav.analyzer"), active: path === "/" || path.startsWith("/property") || path.startsWith("/search") },
     { href: "/leads", label: t(lang, "nav.leads"), active: path.startsWith("/leads") },
+    { href: "/pipeline", label: lang === "es" ? "Seguimiento" : "Pipeline", active: path.startsWith("/pipeline") },
     { href: "/data", label: t(lang, "nav.data"), active: path.startsWith("/data") },
   ];
 

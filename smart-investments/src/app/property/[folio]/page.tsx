@@ -37,6 +37,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ folio
   const { folio } = await params;
   if (!/^\d{13}$/.test(folio)) notFound();
   const lang = parseLang((await cookies()).get("lang")?.value);
+  const L = (en: string, es: string) => (lang === "es" ? es : en);
 
   let report: DealReport | null;
   try {
@@ -81,12 +82,17 @@ export default async function PropertyPage({ params }: { params: Promise<{ folio
               {!report.violationsCovered ? <span className="pill pill-muted">Violations: not covered (city)</span> : null}
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {mapsUrl ? (
               <a className="btn btn-ghost no-print" href={mapsUrl} target="_blank" rel="noreferrer">
-                Map / Street View
+                {L("Map / Street View","Mapa / Street View")}
               </a>
             ) : null}
+            <form action="/api/pipeline" method="post" className="no-print">
+              <input type="hidden" name="_action" value="save" />
+              <input type="hidden" name="folio" value={p.folio} />
+              <button className="btn btn-ghost">{lang === "es" ? "Guardar en seguimiento" : "Save to pipeline"}</button>
+            </form>
             <PrintButton label={t(lang, "report.export")} />
           </div>
         </div>
@@ -101,53 +107,64 @@ export default async function PropertyPage({ params }: { params: Promise<{ folio
         <section className="card lg:col-span-2">
           <div className="h-eyebrow">{t(lang, "report.snapshot")}</div>
           <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
-            <Fact label="Beds">
+            <Fact label={L("Beds","Habitaciones")}>
               <Val s={p.beds} />
             </Fact>
-            <Fact label="Baths">
+            <Fact label={L("Baths","Baños")}>
               <span className="num">
                 {p.baths.value ?? <span className="muted">Unknown</span>}
                 {p.halfBaths.value ? ` + ${p.halfBaths.value} half` : ""}
                 <Src {...paMeta} />
               </span>
             </Fact>
-            <Fact label="Heated sq ft">
+            <Fact label={L("Heated sq ft","Pies² habitables")}>
               <Val s={p.heatedSqft} format={fmtNum} />
             </Fact>
-            <Fact label="Lot sq ft">
+            <Fact label={L("Lot sq ft","Pies² del lote")}>
               <Val s={p.lotSqft} format={fmtNum} />
             </Fact>
-            <Fact label="Year built">
+            <Fact label={L("Year built","Año de construcción")}>
               <Val s={p.yearBuilt} />
             </Fact>
-            <Fact label="Units">
+            <Fact label={L("Units","Unidades")}>
               <Val s={p.units} />
             </Fact>
-            <Fact label="Floors">
+            <Fact label={L("Floors","Pisos")}>
               <Val s={p.floors} />
             </Fact>
-            <Fact label="County use code">
+            <Fact label={L("County use code","Código de uso del condado")}>
               <Val s={p.useCode} />
             </Fact>
             <Fact label={`Assessed value${p.assessmentYear.value ? ` (${p.assessmentYear.value})` : ""}`}>
               <Val s={p.assessedValue} format={fmtMoney} />
             </Fact>
-            <Fact label="Last deed transfer">
+            <Fact label={L("Last deed transfer","Último traspaso de escritura")}>
               <Val s={p.lastTransferDate} format={fmtDate} unknown="None on record" />
             </Fact>
-            <Fact label="Transfer price">
+            <Fact label={L("Transfer price","Precio del traspaso")}>
               <span className="num">
                 {p.lastTransferPrice.value === null ? <span className="muted">Unknown</span> : fmtMoney(p.lastTransferPrice.value)}
                 <Src {...paMeta} note={p.lastTransferPrice.note} />
               </span>
               {o.lastTransferWasMarketSale === false ? <div className="muted text-xs font-normal">Not a market sale</div> : null}
             </Fact>
-            <Fact label="Years since transfer">
+            <Fact label={L("Flood zone (FEMA)","Zona de inundación (FEMA)")}>
+              {report.flood ? (
+                <span>
+                  {report.flood.zone}
+                  {report.flood.sfha ? <span className="pill pill-warn ml-2">High risk</span> : null}
+                  <Src source={report.flood.source} asOf={report.flood.fetchedAt} note="A lot can straddle two zones. Not a lender flood determination." />
+                </span>
+              ) : (
+                <span className="muted">{report.floodLookupFailed ? "Unknown (FEMA did not answer)" : "Unknown (not mapped)"}</span>
+              )}
+            </Fact>
+            <Fact label={L("Years since transfer","Años desde el traspaso")}>
               <span className="num">{o.yearsSinceTransfer ?? <span className="muted">Unknown</span>}</span>
             </Fact>
           </div>
           <div className="card-flat mt-4 text-sm">
-            <strong>Not available from the free data:</strong> zoning, flood zone, HOA details, current tax bill, homestead status, mortgages and liens, equity, photos.
+            <strong>Not available from the free data:</strong> zoning, HOA details, current tax bill, homestead status, mortgages and liens, equity, photos.
             These show as Unknown until the paid or clerk adapters are switched on.
           </div>
         </section>
@@ -194,7 +211,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ folio
           </div>
           <div className="muted text-sm">{OWNER_KIND[o.kind]} (classified from the name)</div>
           <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-3">
-            <Fact label="Mailing address">
+            <Fact label={L("Mailing address","Dirección postal")}>
               <span className="text-sm">
                 {p.mailingAddress.value ?? <span className="muted">Unknown</span>}
                 <br />
@@ -205,11 +222,11 @@ export default async function PropertyPage({ params }: { params: Promise<{ folio
             </Fact>
             <div className="space-y-1 text-sm">
               <div className="row !py-0.5">
-                <span>Absentee</span>
+                <span>{L("Absentee","Dueño ausente")}</span>
                 <span>{yesNo(o.absentee)}</span>
               </div>
               <div className="row !py-0.5">
-                <span>Out of state</span>
+                <span>{L("Out of state","Fuera del estado")}</span>
                 <span>{yesNo(o.outOfState)}</span>
               </div>
               <div className="row !py-0.5">
@@ -217,7 +234,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ folio
                 <span className="muted">Unknown</span>
               </div>
               <div className="row !py-0.5">
-                <span>Mortgage / equity</span>
+                <span>{L("Mortgage / equity","Hipoteca / capital")}</span>
                 <span className="muted">Unknown</span>
               </div>
             </div>
@@ -248,11 +265,11 @@ export default async function PropertyPage({ params }: { params: Promise<{ folio
               <table className="tbl">
                 <thead>
                   <tr>
-                    <th>Status</th>
-                    <th>Type</th>
-                    <th>Detail</th>
-                    <th>Opened</th>
-                    <th>Case</th>
+                    <th>{L("Status","Estado")}</th>
+                    <th>{L("Type","Tipo")}</th>
+                    <th>{L("Detail","Detalle")}</th>
+                    <th>{L("Opened","Abierto")}</th>
+                    <th>{L("Case","Caso")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -344,7 +361,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ folio
 
       <div className="no-print flex justify-between">
         <Link href="/" className="btn btn-ghost">
-          ← New search
+          ← {L("New search","Nueva búsqueda")}
         </Link>
         <PrintButton label={t(lang, "report.export")} />
       </div>

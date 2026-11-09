@@ -185,6 +185,17 @@ describe("Florida costs", () => {
   });
 });
 
+describe("flood zone check", () => {
+  const base = { type: "single_family" as const, yearBuilt: 2005, floors: 1, assessedValue: 1, violationsCovered: true, openViolationCount: 0, city: null };
+  it("warns in a Special Flood Hazard Area and stays informational outside one", () => {
+    const high = floridaGotchas({ ...base, flood: { zone: "AE", subtype: null, sfha: true } }).find((g) => g.key === "flood");
+    expect(high?.status).toBe("warning");
+    expect(high?.title).toMatch(/AE/);
+    const low = floridaGotchas({ ...base, flood: { zone: "X", subtype: "AREA OF MINIMAL FLOOD HAZARD", sfha: false } }).find((g) => g.key === "flood");
+    expect(low?.status).toBe("info");
+  });
+});
+
 describe("strategies", () => {
   it("wholesale MAO = ARV × 70% − repairs − fee", () => {
     const w = wholesale(400_000, 50_000, A);
