@@ -359,6 +359,28 @@ export default async function PropertyPage({ params }: { params: Promise<{ folio
         <p className="text-warn mt-3 text-xs font-medium">{t(lang, "approach.review")}</p>
       </section>
 
+      {p.zip.value && p.propertyType !== "other" ? (
+        <section className="card no-print flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="font-semibold">{L("Who is buying around here?", "¿Quién está comprando por aquí?")}</div>
+            <div className="muted text-sm">
+              {L(
+                "Companies and repeat buyers who bought this property type in this zip code in the last 12 months.",
+                "Empresas y compradores repetidos que compraron este tipo de propiedad en este código postal en los últimos 12 meses.",
+              )}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Link className="btn btn-ghost" href={`/buyers?zip=${p.zip.value}&type=${p.propertyType}`}>
+              {L("Find buyers", "Buscar compradores")}
+            </Link>
+            <Link className="btn btn-ghost" href={`/market?zip=${p.zip.value}`}>
+              {L("Zip market", "Mercado del código postal")}
+            </Link>
+          </div>
+        </section>
+      ) : null}
+
       <div className="no-print flex justify-between">
         <Link href="/" className="btn btn-ghost">
           ← {L("New search","Nueva búsqueda")}

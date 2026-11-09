@@ -35,6 +35,8 @@ export function Nav({ lang }: { lang: Lang }) {
     { href: "/", label: t(lang, "nav.analyzer"), active: path === "/" || path.startsWith("/property") || path.startsWith("/search") },
     { href: "/leads", label: t(lang, "nav.leads"), active: path.startsWith("/leads") },
     { href: "/pipeline", label: lang === "es" ? "Seguimiento" : "Pipeline", active: path.startsWith("/pipeline") },
+    { href: "/market", label: lang === "es" ? "Mercado" : "Market", active: path.startsWith("/market") },
+    { href: "/buyers", label: lang === "es" ? "Compradores" : "Buyers", active: path.startsWith("/buyers") },
     { href: "/data", label: t(lang, "nav.data"), active: path.startsWith("/data") },
   ];
 

@@ -14,6 +14,8 @@ list are in [`../docs/research.md`](../docs/research.md).
 | Deal Report (`/property/[folio]`) | Owner and mailing address, absentee / out-of-state / company flags, building facts, last deed transfer, county violations, motivation score with reasons, value estimate from recent recorded sales with a comp list you can untick, six exit strategies that recalculate as you type, Florida checks, and an English + Spanish call script and letter. "Export PDF" prints a clean copy. |
 | Lead Finder (`/leads`) | Scores every parcel in a zip code and lists the highest, each with its reasons. |
 | Pipeline (`/pipeline`) | Leads saved from a report, grouped by stage, with investor/agent hat and notes. **Test storage only**: a JSON file in `.data/`, no login, not for Vercel. |
+| Market (`/market`) | For a zip code: market sales in the last 12 months, median price and $/sq ft by property type, 6-month trend, share of purchases by investors, absentee and long-term owner shares. |
+| Buyers (`/buyers`) | Companies and repeat buyers who bought in a zip in the last 12 months, with what and where they bought. Cash vs financed is not known; no contact details. |
 | Data (`/data`) | Which adapters are on, what each covers, calls made, and the score weights. |
 
 English/Spanish and light/dark toggles are in the top bar.
@@ -69,7 +71,7 @@ goes through a proxy, use `npm run cloud` instead (builds and serves on port 310
 - Scheduled ingest. Lookups hit the county services live (2–10 s per property, 20–30 s per zip).
   Loading the weekly file into the database is what makes this fast and enables change alerts.
 - Broward and Palm Beach, map view, saved searches and alerts, the real CRM (tasks, outreach log, partner assignment), skip tracing,
-  buyers list, agent tools, market dashboard, AI assistant, photo or listing-link input.
+  buyer buy-boxes and deal pages, agent tools, rent and days-on-market stats, AI assistant, photo or listing-link input.
 - Paid adapters (RentCast, Clerk records, skip tracing, MLS) are listed on the Data page but have no code.
 
 ## Layout

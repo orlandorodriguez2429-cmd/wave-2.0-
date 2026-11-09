@@ -301,3 +301,20 @@ export async function findLeads(search: LeadSearch): Promise<LeadResult> {
     elapsedMs: Date.now() - started,
   };
 }
+
+// ---------- Zip snapshot (Market + Buyers) ----------
+
+export interface ZipSnapshot {
+  records: PropertyRecord[];
+  total: number;
+  truncated: boolean;
+  dataAsOf: string | null;
+  elapsedMs: number;
+}
+
+/** Every residential parcel in a zip code. Shared by the Market and Buyers screens (cached 6 hours). */
+export async function zipSnapshot(zip: string, types: PropertyType[]): Promise<ZipSnapshot> {
+  const started = Date.now();
+  const { records, total, truncated } = await ownershipFor(COUNTY)!.listByZip(zip, { types, max: 30_000 });
+  return { records, total, truncated, dataAsOf: records[0]?.address.asOf ?? null, elapsedMs: Date.now() - started };
+}
