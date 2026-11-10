@@ -6,7 +6,7 @@
 import { Prisma } from '@/generated/prisma/client';
 import { prisma } from '@/lib/db';
 import { decryptSecret } from '@/lib/crypto';
-import { MockBankProvider, SyncRestartRequired, type BankFeedProvider, type SyncPage } from './provider';
+import { DemoBankProvider, MockBankProvider, SyncRestartRequired, type BankFeedProvider, type SyncPage } from './provider';
 import { PlaidProvider } from './plaid';
 import { PlaidRequestError, RECONNECT_ERROR_CODES } from './plaid-client';
 import { planSync, rowKey, type ExistingRow, type SyncStats } from './sync-plan';
@@ -23,6 +23,7 @@ const NO_FEED: BankFeedProvider = {
 export function getProvider(name: string): BankFeedProvider {
   if (name === 'plaid') return new PlaidProvider();
   if (name === 'upload') return NO_FEED;
+  if (name === 'demo') return new DemoBankProvider();
   return new MockBankProvider();
 }
 

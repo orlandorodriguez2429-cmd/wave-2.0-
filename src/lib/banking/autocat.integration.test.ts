@@ -37,7 +37,7 @@ function fakeAi(answers: Record<string, { code: string | null; confidence: numbe
 beforeAll(async () => {
   const user = await prisma.user.create({ data: { email: `auto-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`, name: 'Auto Tester' } });
   userId = user.id;
-  businessId = (await createBusiness({ userId, name: 'Sunrise Cleaning LLC' })).id;
+  businessId = (await createBusiness({ userId, name: 'Autocat Test Co' })).id;
   await prisma.business.update({ where: { id: businessId }, data: { businessType: 'residential cleaning' } });
   const conn = await prisma.bankConnection.create({
     data: {
@@ -116,7 +116,7 @@ describe('autoCategorize', () => {
     const sent = JSON.stringify(ai.seen);
     expect(ai.seen).toHaveLength(1);
     expect(ai.seen[0].businessType).toBe('residential cleaning');
-    expect(sent).not.toMatch(/MARIA|GARCIA|5521|Sunrise|Test Bank|1111|2222|3333/);
+    expect(sent).not.toMatch(/MARIA|GARCIA|5521|Autocat|Test Bank|1111|2222|3333/);
     expect(sent).toContain('ZELLE TO [person]');
     // Feed accounts are not offered as categories; balance-sheet targets are.
     expect(ai.seen[0].categories).not.toContain('1010');

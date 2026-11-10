@@ -1,8 +1,8 @@
 'use client';
 
 import { useActionState } from 'react';
-import Link from 'next/link';
-import { enrollMfaAction, verifyMfaAction } from '@/app/auth-actions';
+import { useTransition } from 'react';
+import { enrollMfaAction, finishEnrollmentAction, verifyMfaAction } from '@/app/auth-actions';
 
 const input = 'w-full rounded-md border border-slate-300 px-3 py-2 text-lg tracking-widest text-center';
 const button = 'w-full rounded-md bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50';
@@ -31,7 +31,7 @@ export function MfaEnrollForm() {
         <ul className="grid grid-cols-2 gap-1 rounded-md bg-slate-50 p-3 font-mono text-sm">
           {state.backupCodes.map((c) => <li key={c}>{c}</li>)}
         </ul>
-        <Link href={state.next ?? '/'} className={`block text-center ${button}`}>I saved them — continue</Link>
+        <ContinueButton />
       </div>
     );
   }
@@ -41,5 +41,14 @@ export function MfaEnrollForm() {
       {state.error && <p className="text-sm text-red-600">{state.error}</p>}
       <button disabled={pending} className={button}>{pending ? 'Checking…' : 'Turn on two-step verification'}</button>
     </form>
+  );
+}
+
+export function ContinueButton({ label = 'I saved them — continue' }: { label?: string }) {
+  const [pending, start] = useTransition();
+  return (
+    <button disabled={pending} onClick={() => start(() => finishEnrollmentAction())} className={button}>
+      {pending ? '…' : label}
+    </button>
   );
 }

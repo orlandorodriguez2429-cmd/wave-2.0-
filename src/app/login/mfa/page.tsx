@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db';
 import { readPendingMfa } from '@/lib/auth';
 import { enrollmentSecret } from '@/lib/mfa';
 import { otpauthUrl } from '@/lib/totp';
-import { MfaVerifyForm, MfaEnrollForm } from './mfa-forms';
+import { ContinueButton, MfaVerifyForm, MfaEnrollForm } from './mfa-forms';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +17,14 @@ export default async function MfaPage() {
     return (
       <Shell title="Two-step verification" subtitle="Enter the 6-digit code from your authenticator app.">
         <MfaVerifyForm />
+      </Shell>
+    );
+  }
+  if (user.mfaEnabledAt) {
+    // Enrolled during this sign-in (e.g. the page was refreshed after the codes were shown).
+    return (
+      <Shell title="Two-step verification is on" subtitle="Your backup codes were shown once when you set it up.">
+        <ContinueButton label="Continue" />
       </Shell>
     );
   }

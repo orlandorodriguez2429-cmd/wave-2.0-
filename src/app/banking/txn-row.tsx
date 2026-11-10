@@ -33,7 +33,7 @@ export function TxnRow({
   loanAccountIds?: string[];
 }) {
   const [state, formAction, pending] = useActionState<ActionResult, FormData>(categorizeTxnAction, {});
-  const [selected, setSelected] = useState(txn.suggestedAccountId ?? accounts[0]?.value ?? '');
+  const [selected, setSelected] = useState(txn.suggestedAccountId ?? '');
   const [busy, startTransition] = useTransition();
 
   return (
@@ -48,10 +48,12 @@ export function TxnRow({
           <input type="hidden" name="transactionId" value={txn.id} />
           <select
             name="categoryAccountId"
+            required
             value={selected}
             onChange={(e) => setSelected(e.target.value)}
             className="rounded-md border border-slate-300 px-2 py-1 text-sm bg-white max-w-56"
           >
+            <option value="" disabled>Choose a category…</option>
             {accounts.map((a) => (
               <option key={a.value} value={a.value}>{a.label}</option>
             ))}

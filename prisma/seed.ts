@@ -198,6 +198,9 @@ async function main() {
     console.log('Seed: phase 2 sample data created (tax rate, customers, invoice+payment, estimate, expense).');
   }
 
+  const { seedDemoClients } = await import('./seed-demo');
+  await seedDemoClients(user.id);
+
   console.log(`Seed complete for ${DEMO_EMAIL} ("${business.name}").`);
 }
 

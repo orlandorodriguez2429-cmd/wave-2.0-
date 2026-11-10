@@ -83,11 +83,16 @@ export async function verifyMfaAction(_prev: ActionResult, formData: FormData): 
   redirect(m.role === 'CLIENT' ? '/client' : '/');
 }
 
-/** Step 2b (first login): confirm the authenticator app; returns backup codes once. */
+/**
+ * Step 2b (first login): confirm the authenticator app. Returns the backup
+ * codes to show once. Deliberately sets NO cookies here: changing cookies in
+ * a server action makes Next re-render the page, which would navigate away
+ * before the codes are shown. The session starts in finishEnrollmentAction.
+ */
 export async function enrollMfaAction(
-  _prev: ActionResult & { backupCodes?: string[]; next?: string },
+  _prev: ActionResult & { backupCodes?: string[] },
   formData: FormData,
-): Promise<ActionResult & { backupCodes?: string[]; next?: string }> {
+): Promise<ActionResult & { backupCodes?: string[] }> {
   const pending = await readPendingMfa();
   if (!pending || pending.stage !== 'enroll') redirect('/login');
   if (!(await hit(`mfa:user:${pending.userId}`, LIMITS.mfaPerUser))) return { error: TOO_MANY };
@@ -97,14 +102,24 @@ export async function enrollMfaAction(
     return { error: 'That code is not right. Check the time on your phone and try the current code.' };
   }
   await recordSuccess(pending.userId);
+  return { backupCodes: codes };
+}
+
+/** After the backup codes were shown: start the session. */
+export async function finishEnrollmentAction(): Promise<void> {
+  const pending = await readPendingMfa();
+  if (!pending || pending.stage !== 'enroll') redirect('/login');
   const user = await prisma.user.findUniqueOrThrow({ where: { id: pending.userId } });
+  // Only completes a login whose password step (the pending cookie) came
+  // before a successful enrollment in this same sign-in.
+  if (!user.mfaEnabledAt || user.mfaEnabledAt.getTime() / 1000 < pending.iat) redirect('/login');
   const m = await membershipFor(user.id, pending.businessId);
   if (!m) redirect('/login');
   await startSession({ userId: user.id, businessId: m.businessId, role: m.role, sv: user.sessionVersion });
   await prisma.auditLog.create({
-    data: { businessId: m.businessId, userId: user.id, action: 'auth.mfa_enrolled', entityType: 'user', entityId: user.id, payload: {} },
+    data: { businessId: m.businessId, userId: user.id, action: 'auth.mfa_enrolled', entityType: 'user', entityId: user.id, payload: { ip: await clientIp() } },
   });
-  return { backupCodes: codes, next: m.role === 'CLIENT' ? '/client' : '/' };
+  redirect(m.role === 'CLIENT' ? '/client' : '/');
 }
 
 export async function logoutAction(): Promise<void> {

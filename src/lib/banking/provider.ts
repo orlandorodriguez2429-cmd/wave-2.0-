@@ -110,3 +110,81 @@ export class MockBankProvider implements BankFeedProvider {
     };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Demo provider — a realistic few months for a small cleaning company, for
+// the local demo only (prisma/seed.ts). Checking + credit card. Two pages so
+// the demo can show rules learned from August being applied in September.
+// ---------------------------------------------------------------------------
+
+const DEMO_CHK = 'demo-checking';
+const DEMO_CC = 'demo-card';
+const d = (id: string, acct: string, date: string, description: string, amount: bigint, merchantName?: string): ExternalTransaction => ({
+  externalId: id, externalAccountId: acct, date, description, amount, currency: 'USD', pending: false, merchantName: merchantName ?? null,
+});
+
+export const DEMO_ACCOUNTS: ExternalBankAccount[] = [
+  { externalAccountId: DEMO_CHK, name: 'Business Checking', mask: '7781', currency: 'USD', type: 'depository', subtype: 'checking' },
+  { externalAccountId: DEMO_CC, name: 'Business Card', mask: '3012', currency: 'USD', type: 'credit', subtype: 'credit card' },
+];
+
+const DEMO_AUGUST: ExternalTransaction[] = [
+  d('aug-01', DEMO_CHK, '2026-08-01', 'OWNER CONTRIBUTION', 500000n),
+  d('aug-02', DEMO_CHK, '2026-08-03', 'MOBILE DEPOSIT HOMEOWNER INV 1041', 42000n),
+  d('aug-03', DEMO_CHK, '2026-08-05', 'SQUARE INC DEPOSIT 080526', 186500n, 'Square'),
+  d('aug-04', DEMO_CC, '2026-08-07', 'HOME DEPOT #4411 ATLANTA GA', -12873n, 'The Home Depot'),
+  d('aug-05', DEMO_CC, '2026-08-08', 'GOOGLE *WORKSPACE', -1400n, 'Google Workspace'),
+  d('aug-06', DEMO_CHK, '2026-08-10', 'ZELLE TO MARIA GARCIA 5521', -60000n),
+  d('aug-07', DEMO_CC, '2026-08-12', 'SHELL OIL 57442', -6420n, 'Shell'),
+  d('aug-08', DEMO_CHK, '2026-08-15', 'GEICO AUTO PMT', -18900n, 'GEICO'),
+  d('aug-09', DEMO_CHK, '2026-08-20', 'CHASE CREDIT CRD AUTOPAY', -21000n),
+  d('aug-10', DEMO_CC, '2026-08-21', 'PAYMENT THANK YOU', 21000n),
+  d('aug-11', DEMO_CHK, '2026-08-25', 'CA DEPT OF TAX AND FEE ADMIN CDTFA', -9800n),
+  d('aug-12', DEMO_CHK, '2026-08-28', 'SBA LOAN PMT 004419', -52000n),
+  d('aug-13', DEMO_CHK, '2026-08-31', 'MONTHLY MAINTENANCE FEE', -1500n),
+];
+
+const DEMO_LATER: ExternalTransaction[] = [
+  // September
+  d('sep-01', DEMO_CHK, '2026-09-02', 'SQUARE INC DEPOSIT 090226', 204300n, 'Square'),
+  d('sep-02', DEMO_CHK, '2026-09-04', 'MOBILE DEPOSIT HOMEOWNER INV 1063', 38500n),
+  d('sep-03', DEMO_CC, '2026-09-06', 'HOME DEPOT #4411 ATLANTA GA', -9215n, 'The Home Depot'),
+  d('sep-04', DEMO_CC, '2026-09-08', 'GOOGLE *WORKSPACE', -1400n, 'Google Workspace'),
+  d('sep-05', DEMO_CHK, '2026-09-10', 'ZELLE TO MARIA GARCIA 5521', -75000n),
+  d('sep-06', DEMO_CHK, '2026-09-12', 'VERIZON WIRELESS PMT', -8500n, 'Verizon'),
+  d('sep-07', DEMO_CHK, '2026-09-15', 'GEICO AUTO PMT', -18900n, 'GEICO'),
+  d('sep-08', DEMO_CHK, '2026-09-18', 'OWNER DRAW', -150000n),
+  d('sep-09', DEMO_CHK, '2026-09-20', 'CHASE CREDIT CRD AUTOPAY', -10615n),
+  d('sep-10', DEMO_CC, '2026-09-21', 'PAYMENT THANK YOU', 10615n),
+  d('sep-11', DEMO_CHK, '2026-09-25', 'CA DEPT OF TAX AND FEE ADMIN CDTFA', -11200n),
+  d('sep-12', DEMO_CHK, '2026-09-28', 'SBA LOAN PMT 004419', -52000n),
+  d('sep-13', DEMO_CHK, '2026-09-30', 'MONTHLY MAINTENANCE FEE', -1500n),
+  // October
+  d('oct-01', DEMO_CHK, '2026-10-02', 'SQUARE INC DEPOSIT 100226', 231800n, 'Square'),
+  d('oct-02', DEMO_CHK, '2026-10-06', 'MOBILE DEPOSIT HOMEOWNER INV 1088', 46000n),
+  d('oct-03', DEMO_CC, '2026-10-07', 'HOME DEPOT #4411 ATLANTA GA', -15402n, 'The Home Depot'),
+  d('oct-04', DEMO_CC, '2026-10-08', 'GOOGLE *WORKSPACE', -1400n, 'Google Workspace'),
+  d('oct-05', DEMO_CHK, '2026-10-10', 'ZELLE TO MARIA GARCIA 5521', -90000n),
+  d('oct-06', DEMO_CC, '2026-10-11', 'CLEANSOURCE SUPPLY CO', -24750n),
+  d('oct-07', DEMO_CHK, '2026-10-12', 'VERIZON WIRELESS PMT', -8500n, 'Verizon'),
+  d('oct-08', DEMO_CHK, '2026-10-15', 'GEICO AUTO PMT', -18900n, 'GEICO'),
+  d('oct-09', DEMO_CC, '2026-10-17', 'SHELL OIL 57442', -7110n, 'Shell'),
+  d('oct-10', DEMO_CHK, '2026-10-20', 'CHASE CREDIT CRD AUTOPAY', -16802n),
+  d('oct-11', DEMO_CC, '2026-10-21', 'PAYMENT THANK YOU', 16802n),
+  d('oct-12', DEMO_CHK, '2026-10-23', 'VENMO PAYMENT JAMES OKAFOR', -20000n),
+  d('oct-13', DEMO_CHK, '2026-10-28', 'SBA LOAN PMT 004419', -52000n),
+  d('oct-14', DEMO_CHK, '2026-10-31', 'MONTHLY MAINTENANCE FEE', -1500n),
+  // November so far
+  d('nov-01', DEMO_CHK, '2026-11-03', 'SQUARE INC DEPOSIT 110326', 98400n, 'Square'),
+  d('nov-02', DEMO_CC, '2026-11-05', 'HOME DEPOT #4411 ATLANTA GA', -6630n, 'The Home Depot'),
+  d('nov-03', DEMO_CC, '2026-11-08', 'GOOGLE *WORKSPACE', -1400n, 'Google Workspace'),
+];
+
+export class DemoBankProvider implements BankFeedProvider {
+  readonly name = 'demo';
+  async syncPage(_token: string | null, cursor: string | null): Promise<SyncPage> {
+    if (!cursor) return { added: DEMO_AUGUST, modified: [], removed: [], nextCursor: 'aug', hasMore: false };
+    if (cursor === 'aug') return { added: DEMO_LATER, modified: [], removed: [], nextCursor: 'done', hasMore: false };
+    return { added: [], modified: [], removed: [], nextCursor: cursor, hasMore: false };
+  }
+}
