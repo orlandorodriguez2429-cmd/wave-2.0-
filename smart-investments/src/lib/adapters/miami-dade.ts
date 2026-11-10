@@ -9,7 +9,7 @@
 // Verified against the live services on 11/09/2026.
 
 import { sourced, type Sourced } from "@/lib/sourced";
-import { countLayer, layerDataDate, queryLayer, sqlString, type Feature } from "./arcgis";
+import { countLayer, layerDataDate, layerFields, queryLayer, sqlString, type Feature } from "./arcgis";
 import type {
   AdapterInfo,
   Box,
@@ -32,9 +32,8 @@ const PA_SOURCE = "Miami-Dade Property Appraiser (Property Point View, county op
 const CODE_SOURCE = "Miami-Dade Code Compliance (county open data, unincorporated areas only)";
 const BLDG_SOURCE = "Miami-Dade Building Violations (county open data, unincorporated areas only)";
 
-const PA_FIELDS = [
+const PA_FIELDS_BASE = [
   "FOLIO",
-  "TRUE_SITE_ADDR_NO_UNIT",
   "TRUE_SITE_UNIT",
   "TRUE_SITE_CITY",
   "TRUE_SITE_ZIP_CODE",
@@ -63,6 +62,34 @@ const PA_FIELDS = [
   "PRICE_1",
   "DATEOFSALE_UTC",
 ];
+
+const ADDR_FIELDS = ["TRUE_SITE_ADDR_NO_UNIT", "TRUE_SITE_ADDR"];
+
+/**
+ * The county renamed its site-address field on 11/09/2026 (TRUE_SITE_ADDR_NO_UNIT became
+ * TRUE_SITE_ADDR, which now includes the unit). The name is read from the live layer so
+ * another rename degrades to a clear error instead of a silent break.
+ */
+async function addrField(): Promise<string> {
+  const fields = await layerFields(PA_LAYER, "mdc-property-appraiser");
+  const found = ADDR_FIELDS.find((f) => fields.includes(f));
+  if (!found) throw new Error("Miami-Dade changed its property layer: no site-address field found.");
+  return found;
+}
+
+async function paFields(): Promise<string[]> {
+  return [...PA_FIELDS_BASE, await addrField()];
+}
+
+/** Site address without the unit, whichever field the county currently publishes. */
+function siteAddress(a: Record<string, unknown>): string | null {
+  const noUnit = str(a.TRUE_SITE_ADDR_NO_UNIT);
+  if (noUnit) return noUnit;
+  const full = str(a.TRUE_SITE_ADDR);
+  const unit = str(a.TRUE_SITE_UNIT);
+  if (full && unit && full.endsWith(` ${unit}`)) return full.slice(0, -unit.length - 1).trim();
+  return full;
+}
 
 /** Florida DOR use codes as Miami-Dade publishes them (code + subcode). */
 const TYPE_CODES: Record<Exclude<PropertyType, "other">, string[]> = {
@@ -113,7 +140,7 @@ function toRecord(f: Feature, asOf: string | null, fetchedAt: string): PropertyR
     countyName: "Miami-Dade",
     folio: String(a.FOLIO).trim(),
     parcelId: String(a.FOLIO).trim(),
-    address: s(str(a.TRUE_SITE_ADDR_NO_UNIT)),
+    address: s(siteAddress(a)),
     unit: s(str(a.TRUE_SITE_UNIT)),
     city: s(str(a.TRUE_SITE_CITY)),
     zip: s(str(a.TRUE_SITE_ZIP_CODE)?.slice(0, 5) ?? null),
@@ -185,7 +212,7 @@ export const miamiDadeOwnership: OwnershipAdapter = {
       queryLayer(PA_LAYER, {
         adapterId: this.info.id,
         where: `FOLIO = ${sqlString(folio)}`,
-        outFields: PA_FIELDS,
+        outFields: await paFields(),
         returnGeometry: true,
         max: 1,
       }),
@@ -197,10 +224,13 @@ export const miamiDadeOwnership: OwnershipAdapter = {
   async searchByAddress(streets, opts) {
     // Exact matches on several candidate spellings in one request are much faster on this
     // layer than a prefix search, so the caller tries "exact" first and "prefix" only if needed.
+    const field = await addrField();
+    // When the address field includes the unit, an exact match needs the unit appended.
+    const withUnit = field === "TRUE_SITE_ADDR" && opts.unit ? streets.map((st) => `${st} ${opts.unit}`) : [];
     const match =
       opts.mode === "exact"
-        ? `TRUE_SITE_ADDR_NO_UNIT IN (${streets.map(sqlString).join(",")})`
-        : `TRUE_SITE_ADDR_NO_UNIT LIKE ${sqlString(`${streets[0]}%`)}`;
+        ? `${field} IN (${[...streets, ...withUnit].map(sqlString).join(",")})`
+        : `${field} LIKE ${sqlString(`${streets[0]}%`)}`;
     const clauses = [match];
     if (opts.zip) clauses.push(`TRUE_SITE_ZIP_CODE LIKE ${sqlString(`${opts.zip}%`)}`);
     if (opts.unit) clauses.push(`TRUE_SITE_UNIT = ${sqlString(opts.unit)}`);
@@ -209,9 +239,9 @@ export const miamiDadeOwnership: OwnershipAdapter = {
       queryLayer(PA_LAYER, {
         adapterId: this.info.id,
         where: clauses.join(" AND "),
-        outFields: PA_FIELDS,
+        outFields: await paFields(),
         returnGeometry: true,
-        orderBy: "TRUE_SITE_ADDR_NO_UNIT, TRUE_SITE_UNIT",
+        orderBy: `${field}, TRUE_SITE_UNIT`,
         max: 25,
       }),
     ]);
@@ -225,7 +255,7 @@ export const miamiDadeOwnership: OwnershipAdapter = {
       queryLayer(PA_LAYER, {
         adapterId: this.info.id,
         where: "1=1",
-        outFields: PA_FIELDS,
+        outFields: await paFields(),
         returnGeometry: true,
         geometry: `${lng},${lat}`,
         distanceMeters: meters,
@@ -244,6 +274,7 @@ export const miamiDadeOwnership: OwnershipAdapter = {
     if (codes.length) clauses.push(`DOR_CODE_CUR IN (${codes.map(sqlString).join(",")})`);
     const where = clauses.join(" AND ");
     const max = opts.max ?? 10_000;
+    const outFields = await paFields();
     const [asOf, total] = await Promise.all([
       layerDataDate(PA_LAYER, this.info.id),
       countLayer(PA_LAYER, this.info.id, where),
@@ -259,7 +290,7 @@ export const miamiDadeOwnership: OwnershipAdapter = {
           queryLayer(PA_LAYER, {
             adapterId: this.info.id,
             where,
-            outFields: PA_FIELDS,
+            outFields,
             returnGeometry: true,
             orderBy: "FOLIO",
             offset,
@@ -309,7 +340,7 @@ export const miamiDadeSales: SalesAdapter = {
     const res = await queryLayer(PA_LAYER, {
       adapterId: this.info.id,
       where: clauses.join(" AND "),
-      outFields: PA_FIELDS,
+      outFields: await paFields(),
       returnGeometry: true,
       geometry: `${q.lng},${q.lat}`,
       distanceMiles: q.radiusMiles,
@@ -319,7 +350,7 @@ export const miamiDadeSales: SalesAdapter = {
       const a = f.attributes;
       return {
         folio: String(a.FOLIO).trim(),
-        address: str(a.TRUE_SITE_ADDR_NO_UNIT) ?? "Unknown",
+        address: siteAddress(a) ?? "Unknown",
         unit: str(a.TRUE_SITE_UNIT),
         saleDate: isoFromMs(a.DATEOFSALE_UTC) ?? "",
         price: Number(a.PRICE_1),

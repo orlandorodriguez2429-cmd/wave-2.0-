@@ -174,3 +174,12 @@ export async function layerDataDate(layerUrl: string, adapterId: string): Promis
 export function sqlString(s: string): string {
   return `'${s.replace(/'/g, "''")}'`;
 }
+
+/** Field names the layer currently publishes. Publishers rename fields without notice, so adapters check. */
+export async function layerFields(layerUrl: string, adapterId: string): Promise<string[]> {
+  return cached(`${layerUrl}|fields`, 15 * 60 * 1000, async () => {
+    const json = await post(layerUrl, {});
+    recordCall(adapterId);
+    return ((json.fields as { name: string }[] | undefined) ?? []).map((f) => f.name);
+  });
+}
