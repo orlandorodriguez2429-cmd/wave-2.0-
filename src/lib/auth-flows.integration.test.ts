@@ -129,3 +129,34 @@ describe('rate limits & lockout', () => {
     expect(isLocked(await prisma.user.findUniqueOrThrow({ where: { id } }))).toBe(false);
   });
 });
+
+describe('password reset', () => {
+  it('emails a hashed single-use link, ends sessions and clears lockout, says nothing about unknown emails', async () => {
+    const { requestPasswordReset, resetPassword, checkResetToken } = await import('./password-reset');
+    const { verifyPassword, hashPassword } = await import('./auth');
+    const email = `reset-${tag}@t.local`;
+    const user = await prisma.user.create({
+      data: { email, name: 'R', passwordHash: await hashPassword('old-password-123'), lockedUntil: new Date(Date.now() + 600_000), failedLoginCount: 4 },
+    });
+    await prisma.membership.create({ data: { userId: user.id, businessId: bizA, role: 'ACCOUNTANT' } });
+
+    expect(await requestPasswordReset(`nobody-${tag}@t.local`)).toEqual({});
+    const first = await requestPasswordReset(email);
+    const second = await requestPasswordReset(email);
+    const t1 = first.link!.split('/reset/')[1];
+    const t2 = second.link!.split('/reset/')[1];
+    expect(await checkResetToken(t1)).toBeNull(); // replaced by the newer one
+    expect(JSON.stringify(await prisma.passwordReset.findMany({ where: { userId: user.id } }))).not.toContain(t2);
+
+    await expect(resetPassword(t2, 'short')).rejects.toThrow(/at least 12/);
+    await resetPassword(t2, 'brand-new-password-456');
+    const after = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(await verifyPassword('brand-new-password-456', after.passwordHash!)).toBe(true);
+    expect(after.sessionVersion).toBe(user.sessionVersion + 1);
+    expect([after.lockedUntil, after.failedLoginCount]).toEqual([null, 0]);
+    await expect(resetPassword(t2, 'another-password-789')).rejects.toThrow(/not valid/);
+
+    const old = await requestPasswordReset(email, new Date(Date.now() - 61 * 60_000));
+    expect(await checkResetToken(old.link!.split('/reset/')[1])).toBeNull(); // expired
+  });
+});

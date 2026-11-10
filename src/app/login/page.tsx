@@ -15,7 +15,9 @@ export default async function LoginPage() {
           <p className="text-sm text-slate-500 mt-1">Sign in to your books.</p>
         </div>
         <LoginForm />
-        <p className="text-xs text-slate-400">Two-step verification is required for every account.</p>
+        <p className="text-xs text-slate-400">
+          Two-step verification is required for every account. <a href="/login/forgot" className="text-teal-700 hover:underline">Forgot password?</a>
+        </p>
         <p className="text-xs text-slate-400">
           <a href="/privacy" className="hover:underline">Privacy</a> · <a href="/terms" className="hover:underline">Terms</a>
         </p>

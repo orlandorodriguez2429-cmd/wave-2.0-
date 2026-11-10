@@ -68,13 +68,14 @@ export async function clientUploadStatementAction(
     const file = formData.get('file');
     if (!(file instanceof File) || file.size === 0) return { error: 'Choose the statement CSV file.' };
     if (file.size > 2 * 1024 * 1024) return { error: 'That file is larger than 2 MB.' };
-    if (!/\.csv$/i.test(file.name)) return { error: 'Please upload the CSV export of your statement.' };
+    const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
+    if (!isPdf && !/\.csv$/i.test(file.name)) return { error: 'Please upload your statement as a PDF or CSV file.' };
     const target = String(formData.get('linkId') ?? '');
     const r = await importStatement({
       businessId: business.id, // linkId is re-checked against this business inside
       userId: user.id,
       fileName: file.name,
-      csvText: await file.text(),
+      ...(isPdf ? { pdf: new Uint8Array(await file.arrayBuffer()) } : { csvText: await file.text() }),
       openingBalance: String(formData.get('opening') ?? ''),
       closingBalance: String(formData.get('closing') ?? ''),
       positiveIsMoneyOut: formData.get('positiveIsMoneyOut') === 'on',

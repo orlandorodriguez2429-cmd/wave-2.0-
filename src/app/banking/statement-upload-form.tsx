@@ -13,14 +13,23 @@ export function StatementUploadForm({
 }) {
   const [state, formAction, pending] = useActionState(audience === 'client' ? clientUploadStatementAction : uploadStatementAction, {});
   const [target, setTarget] = useState(accounts[0]?.value ?? 'new');
+  // Controlled so a failed upload (e.g. balance check) doesn't wipe what was typed;
+  // React resets uncontrolled fields after every form action.
+  const [fields, setFields] = useState({ newName: '', newKind: 'depository', opening: '', closing: '' });
+  const bind = (name: keyof typeof fields) => ({
+    name,
+    value: fields[name],
+    onChange: (e: { target: { value: string } }) => setFields((f) => ({ ...f, [name]: e.target.value })),
+  });
   const input = 'rounded-md border border-slate-300 px-2.5 py-1.5 text-sm bg-white';
   return (
     <form action={formAction} className="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
       <div>
         <h2 className="font-medium">Upload a statement instead</h2>
         <p className="text-sm text-slate-500">
-          For banks or clients that won&apos;t use Plaid. Upload the bank&apos;s CSV export and the statement&apos;s opening and
-          closing balance; nothing is imported unless the balances add up. Lines already on file are skipped.
+          For banks or clients that won&apos;t use Plaid. Upload the PDF statement or the bank&apos;s CSV export. Nothing is imported
+          unless opening balance + transactions = closing balance. Lines already on file are skipped. For a PDF you can leave
+          the balances blank to use the ones printed on it.
         </p>
       </div>
       <div className="flex flex-wrap items-end gap-3">
@@ -35,11 +44,11 @@ export function StatementUploadForm({
           <>
             <label className="block">
               <span className="block text-xs font-medium text-slate-500 mb-1">Account name</span>
-              <input name="newName" placeholder="e.g. Local CU Checking 1234" className={`${input} w-56`} />
+              <input {...bind('newName')} placeholder="e.g. Local CU Checking 1234" className={`${input} w-56`} />
             </label>
             <label className="block">
               <span className="block text-xs font-medium text-slate-500 mb-1">Type</span>
-              <select name="newKind" className={input}>
+              <select {...bind('newKind')} className={input}>
                 <option value="depository">Checking / savings</option>
                 <option value="credit">Credit card</option>
               </select>
@@ -47,16 +56,16 @@ export function StatementUploadForm({
           </>
         )}
         <label className="block">
-          <span className="block text-xs font-medium text-slate-500 mb-1">Statement CSV</span>
-          <input type="file" name="file" accept=".csv,text/csv" required className="text-sm" />
+          <span className="block text-xs font-medium text-slate-500 mb-1">Statement (PDF or CSV)</span>
+          <input type="file" name="file" accept=".pdf,application/pdf,.csv,text/csv" required className="text-sm" />
         </label>
         <label className="block">
           <span className="block text-xs font-medium text-slate-500 mb-1">Opening balance</span>
-          <input name="opening" required placeholder="0.00" className={`${input} w-28`} />
+          <input {...bind('opening')} placeholder="0.00" className={`${input} w-28`} />
         </label>
         <label className="block">
           <span className="block text-xs font-medium text-slate-500 mb-1">Closing balance</span>
-          <input name="closing" required placeholder="0.00" className={`${input} w-28`} />
+          <input {...bind('closing')} placeholder="0.00" className={`${input} w-28`} />
         </label>
         <label className="flex items-center gap-2 pb-2 text-xs text-slate-600">
           <input type="checkbox" name="positiveIsMoneyOut" /> Positive amounts are money out (some card exports)

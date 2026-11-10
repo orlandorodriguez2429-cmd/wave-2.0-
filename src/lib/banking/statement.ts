@@ -138,7 +138,11 @@ export async function importStatement(opts: {
   businessId: string;
   userId: string;
   fileName: string;
-  csvText: string;
+  /** One of: the CSV text… */
+  csvText?: string;
+  /** …or the PDF bytes. */
+  pdf?: Uint8Array;
+  /** Blank = use the balances printed on a PDF statement. */
   openingBalance: string;
   closingBalance: string;
   positiveIsMoneyOut?: boolean;
@@ -149,14 +153,25 @@ export async function importStatement(opts: {
 }): Promise<{ uploadId: string; imported: number; duplicates: number; auto: AutoStats | null }> {
   const business = await prisma.business.findUniqueOrThrow({ where: { id: opts.businessId } });
   const currency = business.functionalCurrency;
-  const rows = parseStatementCsv(opts.csvText, currency, { positiveIsMoneyOut: opts.positiveIsMoneyOut });
+  let rows: StatementRow[];
+  let printedOpening: bigint | null = null;
+  let printedClosing: bigint | null = null;
+  if (opts.pdf) {
+    const { parseStatementPdf } = await import('./statement-pdf');
+    const parsed = await parseStatementPdf(opts.pdf, currency);
+    rows = parsed.rows;
+    printedOpening = parsed.openingBalance;
+    printedClosing = parsed.closingBalance;
+  } else {
+    rows = parseStatementCsv(opts.csvText ?? '', currency, { positiveIsMoneyOut: opts.positiveIsMoneyOut });
+  }
 
   let link = opts.linkId ? await prisma.bankAccountLink.findUnique({ where: { id: opts.linkId } }) : null;
   if (opts.linkId && (!link || link.businessId !== opts.businessId)) throw new LedgerValidationError('Unknown account.');
   const kind = link?.type === 'credit' || opts.newAccount?.kind === 'credit' ? 'credit' : 'depository';
 
-  const opening = parseMoneyCell(opts.openingBalance, currency);
-  const closing = parseMoneyCell(opts.closingBalance, currency);
+  const opening = parseMoneyCell(opts.openingBalance, currency) ?? printedOpening;
+  const closing = parseMoneyCell(opts.closingBalance, currency) ?? printedClosing;
   if (opening === null || closing === null) throw new LedgerValidationError('Enter the opening and closing balance from the statement.');
   const sum = rows.reduce((s, r) => s + r.amount, 0n);
   const expectedClosing = kind === 'credit' ? opening - sum : opening + sum;

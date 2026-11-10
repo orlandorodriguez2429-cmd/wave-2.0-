@@ -1423,3 +1423,17 @@ model DeletionRecord {
 
   @@map("deletion_records")
 }
+
+// Forgot-password links: single use, token stored only as a SHA-256 hash,
+// valid 60 minutes. Two-step verification is still required afterwards.
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@map("password_resets")
+}

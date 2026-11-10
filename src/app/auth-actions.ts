@@ -21,6 +21,7 @@ import { confirmEnrollment, resetMfa, verifyLoginCode } from '@/lib/mfa';
 import { hit, isLocked, LIMITS, recordFailure, recordSuccess } from '@/lib/rate-limit';
 import { acceptInvite, createInvite, InviteError } from '@/lib/invites';
 import { deleteBusiness } from '@/lib/retention';
+import { requestPasswordReset, resetPassword, ResetError } from '@/lib/password-reset';
 import type { MembershipRole } from '@/generated/prisma/enums';
 import type { ActionResult } from './actions';
 
@@ -311,4 +312,27 @@ export async function changePasswordAction(_prev: ActionResult & { message?: str
     data: { businessId: session.businessId, userId: user.id, action: 'auth.password_changed', entityType: 'user', entityId: user.id, payload: {} },
   });
   return { message: 'Password changed. Other devices have been signed out.' };
+}
+
+export async function requestResetAction(_prev: ActionResult & { message?: string }, formData: FormData): Promise<ActionResult & { message?: string }> {
+  const email = String(formData.get('email') ?? '').trim().toLowerCase();
+  const okIp = await hit(`reset:ip:${await clientIp()}`, LIMITS.loginPerIp);
+  const okEmail = await hit(`reset:email:${email}`, { max: 3, windowSeconds: 60 * 60 });
+  if (!okIp) return { error: TOO_MANY };
+  // Same answer whether or not the account exists (and when over the per-email limit).
+  if (okEmail && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) await requestPasswordReset(email);
+  return { message: 'If that email has an account, a reset link is on its way. It works once, for 60 minutes.' };
+}
+
+export async function resetPasswordAction(token: string, _prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  if (!(await hit(`reset:ip:${await clientIp()}`, LIMITS.loginPerIp))) return { error: TOO_MANY };
+  const password = String(formData.get('password') ?? '');
+  if (password !== String(formData.get('confirm') ?? '')) return { error: 'The two passwords do not match.' };
+  try {
+    await resetPassword(token, password);
+  } catch (err) {
+    if (err instanceof ResetError) return { error: err.message };
+    throw err;
+  }
+  redirect('/login?reset=1');
 }

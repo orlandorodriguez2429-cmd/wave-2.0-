@@ -3,7 +3,8 @@
 Month-to-month bookkeeping for a tax and bookkeeping office's clients:
 
 1. **Bank in, automatically.** Each client connects their bank once (Plaid
-   Link) — or you upload a statement CSV. New transactions arrive by webhook,
+   Link) — or you (or they) upload a PDF or CSV statement, which is only
+   accepted if opening balance + transactions = closing balance. New transactions arrive by webhook,
    with a daily backstop sync.
 2. **Sorted automatically.** Transfers between the client's own accounts,
    then your rules (including ones learned from your corrections), then

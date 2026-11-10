@@ -63,3 +63,41 @@ describe('importStatement', () => {
     expect(await prisma.importedTransaction.count({ where: { businessId } })).toBe(5);
   });
 });
+
+describe('PDF statements', () => {
+  const makePdf = async (ending: string) => {
+    const PDFDocument = (await import('pdfkit')).default;
+    const doc = new PDFDocument();
+    const chunks: Buffer[] = [];
+    doc.on('data', (c: Buffer) => chunks.push(c));
+    const done = new Promise<Uint8Array>((r) => doc.on('end', () => r(new Uint8Array(Buffer.concat(chunks)))));
+    const row = (y: number, cells: Array<[number, string]>) => cells.forEach(([x, s]) => doc.fontSize(10).text(s, x, y, { lineBreak: false }));
+    row(40, [[40, 'Statement Period 10/01/2026 - 10/31/2026']]);
+    row(60, [[40, 'Beginning Balance'], [460, '$500.00']]);
+    row(80, [[40, 'Deposits']]);
+    row(95, [[40, '10/02'], [90, 'SQUARE INC DEPOSIT 100226'], [460, '2,318.00']]);
+    row(115, [[40, 'Withdrawals']]);
+    row(130, [[40, '10/08'], [90, 'GOOGLE *WORKSPACE'], [460, '14.00']]);
+    row(150, [[40, 'Ending Balance'], [460, ending]]);
+    doc.end();
+    return done;
+  };
+
+  it('imports with the balances printed on the PDF', async () => {
+    const r = await importStatement({
+      businessId, userId, fileName: 'oct.pdf', pdf: await makePdf('$2,804.00'), openingBalance: '', closingBalance: '',
+      newAccount: { name: 'Savings Bank Checking', kind: 'depository' },
+    });
+    expect(r).toMatchObject({ imported: 2, duplicates: 0 });
+    const up = await prisma.statementUpload.findUniqueOrThrow({ where: { id: r.uploadId } });
+    expect([up.openingBalance, up.closingBalance]).toEqual([50000n, 280400n]);
+  });
+
+  it('a PDF whose lines do not add up to its printed ending balance imports nothing', async () => {
+    const before = await prisma.importedTransaction.count({ where: { businessId } });
+    await expect(
+      importStatement({ businessId, userId, fileName: 'bad.pdf', pdf: await makePdf('$2,900.00'), openingBalance: '', closingBalance: '', newAccount: { name: 'X', kind: 'depository' } }),
+    ).rejects.toThrow(/Balance check failed/);
+    expect(await prisma.importedTransaction.count({ where: { businessId } })).toBe(before);
+  });
+});

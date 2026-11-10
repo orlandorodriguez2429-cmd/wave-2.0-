@@ -70,6 +70,10 @@ never in the repository. Ciphertext is versioned (`v1:`) to allow rotation.
   Each session carries a version; role changes, removal, MFA setup/reset and
   business deletion invalidate all earlier sessions. Switching business
   issues a new token.
+- **Forgot password:** emailed link, single use, valid 60 minutes, stored
+  only as a hash; the response never reveals whether an email has an account;
+  rate limited. Resetting ends all sessions and clears a lockout but does
+  not skip two-step verification.
 - **Client invitations:** single-use links, stored only as a hash, valid 72
   hours; a newer invitation cancels older ones. The client sets their own
   password and must set up two-step before seeing anything.
@@ -155,6 +159,7 @@ Liaison for your state] · [cyber insurance carrier, if any].
 
 ## 11. Things this app does not do (yet)
 
-- PDF statements are not parsed (CSV only).
+- Scanned (image-only) PDF statements can't be read; text PDFs and CSVs can.
+  Every statement upload must pass the opening + transactions = closing check.
 - No automatic key rotation tool (ciphertext format supports it).
 - No built-in SIEM/alerting; rely on host alerts [configure].

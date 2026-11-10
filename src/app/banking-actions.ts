@@ -313,15 +313,16 @@ export async function uploadStatementAction(_prev: ActionResult & { message?: st
     const file = formData.get('file');
     if (!(file instanceof File) || file.size === 0) return { error: 'Choose the statement CSV file.' };
     if (file.size > MAX_STATEMENT_BYTES) return { error: 'That file is larger than 2 MB.' };
-    if (!/\.csv$/i.test(file.name) && file.type !== 'text/csv') {
-      return { error: 'Upload the statement as CSV (most banks offer "Download as CSV"). PDF statements are not read automatically yet.' };
+    const isPdf = /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
+    if (!isPdf && !/\.csv$/i.test(file.name) && file.type !== 'text/csv') {
+      return { error: 'Upload the statement as a PDF or CSV file.' };
     }
     const target = String(formData.get('linkId') ?? '');
     const r = await importStatement({
       businessId: business.id,
       userId: user.id,
       fileName: file.name,
-      csvText: await file.text(),
+      ...(isPdf ? { pdf: new Uint8Array(await file.arrayBuffer()) } : { csvText: await file.text() }),
       openingBalance: String(formData.get('opening') ?? ''),
       closingBalance: String(formData.get('closing') ?? ''),
       positiveIsMoneyOut: formData.get('positiveIsMoneyOut') === 'on',
