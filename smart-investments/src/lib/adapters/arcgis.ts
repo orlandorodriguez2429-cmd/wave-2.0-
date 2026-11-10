@@ -50,7 +50,10 @@ async function post(url: string, params: Record<string, string>, timeoutMs = 30_
       return json;
     } catch (err) {
       lastErr = err;
-      if (err instanceof Error && err.message.startsWith("ArcGIS error")) break; // bad query; retrying won't help
+      // A malformed query will never work; a server-side timeout ("Unable to perform query") often does on retry.
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.startsWith("ArcGIS error") && !/Unable to perform query/i.test(msg)) break;
+      if (/Invalid field|parameter is invalid/i.test(msg)) break;
       await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
     }
   }
