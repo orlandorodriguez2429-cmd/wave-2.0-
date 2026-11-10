@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import { getCurrentContext } from '@/lib/context';
 import { prisma } from '@/lib/db';
-import { profitAndLoss, trialBalance } from '@/lib/ledger/reports';
-import { signedBalance } from '@/lib/ledger/validate';
+import { profitAndLoss } from '@/lib/ledger/reports';
+import { vendor1099Totals } from '@/lib/forms1099/tracking';
 import { formatMoney } from '@/lib/money';
 
 export const dynamic = 'force-dynamic';
@@ -29,58 +29,86 @@ export default async function Dashboard() {
   const currency = business.functionalCurrency;
   const fyStart = fiscalYearStart(business.fiscalYearStartMonth);
   const months = trailingMonths(6);
+  const thisMonth = months[months.length - 1];
+  const taxYear = new Date().getUTCFullYear();
 
-  const [tb, pnl, monthlyPnl, invoices, recent] = await Promise.all([
-    trialBalance(business.id),
+  const [ytd, monthlyPnl, connections, toReviewByMonth, flaggedCount, closes, totals1099] = await Promise.all([
     profitAndLoss(business.id, { from: fyStart, to: new Date() }),
     Promise.all(months.map((m) => profitAndLoss(business.id, { from: m.from, to: m.to }))),
-    prisma.invoice.findMany({
-      where: { businessId: business.id, status: { in: ['OPEN', 'PAID'] } },
-      select: { status: true, total: true, dueDate: true, updatedAt: true },
+    prisma.bankConnection.findMany({
+      where: { businessId: business.id, status: { not: 'REMOVED' } },
+      include: { _count: { select: { accounts: true } } },
+      orderBy: { createdAt: 'asc' },
     }),
-    prisma.journalEntry.findMany({
-      where: { businessId: business.id, status: 'POSTED' },
-      orderBy: [{ date: 'desc' }, { entryNumber: 'desc' }],
-      take: 6,
-      include: { lines: true, reversedBy: { select: { id: true } } },
-    }),
+    Promise.all(
+      months.map((m) =>
+        prisma.importedTransaction.groupBy({
+          by: ['status'],
+          where: { businessId: business.id, date: { gte: m.from, lte: m.to } },
+          _count: { _all: true },
+        }),
+      ),
+    ),
+    prisma.importedTransaction.count({ where: { businessId: business.id, needsReview: true } }),
+    prisma.periodClose.findMany({ where: { businessId: business.id, status: 'CLOSED' }, select: { periodEnd: true } }),
+    vendor1099Totals(business.id, taxYear),
   ]);
 
-  const sumBy = (pred: (r: (typeof tb.rows)[number]) => boolean) =>
-    tb.rows.filter(pred).reduce((s, r) => s + signedBalance(r.type, r.debits, r.credits), 0n);
-
-  const cash = sumBy((r) => r.subtype === 'cash_and_bank');
-  const receivable = sumBy((r) => r.subtype === 'accounts_receivable');
-  const payable = sumBy((r) => r.subtype === 'accounts_payable' || r.subtype === 'credit_card');
-
+  const expensesOf = (p: (typeof monthlyPnl)[number]) => p.cogs.total + p.expenses.total;
+  const current = monthlyPnl[monthlyPnl.length - 1];
   const cards = [
-    { label: 'Cash You Have', value: cash },
-    { label: 'Money Owed to You', value: receivable },
-    { label: 'Money You Owe', value: payable },
-    { label: `Profit (FY from ${fyStart.toISOString().slice(0, 10)})`, value: pnl.netIncome },
+    { label: `Income · ${thisMonth.label}`, value: current.income.total },
+    { label: `Expenses · ${thisMonth.label}`, value: expensesOf(current) },
+    { label: `Net · ${thisMonth.label}`, value: current.netIncome },
+    { label: 'Net · year to date', value: ytd.netIncome },
   ];
 
   const trend = months.map((m, i) => ({ label: m.label, netIncome: monthlyPnl[i].netIncome }));
-  const maxAbs = trend.reduce((m, t) => (t.netIncome < 0n ? -t.netIncome : t.netIncome) > m ? (t.netIncome < 0n ? -t.netIncome : t.netIncome) : m, 1n);
+  const abs = (n: bigint) => (n < 0n ? -n : n);
+  const maxAbs = trend.reduce((m, t) => (abs(t.netIncome) > m ? abs(t.netIncome) : m), 1n);
 
-  const today = new Date();
-  const overdue = invoices.filter((i) => i.status === 'OPEN' && i.dueDate < today);
-  const openNotOverdue = invoices.filter((i) => i.status === 'OPEN' && i.dueDate >= today);
-  const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const paidRecently = invoices.filter((i) => i.status === 'PAID' && i.updatedAt >= thirtyDaysAgo);
-  const invoiceBuckets = [
-    { label: 'Overdue', count: overdue.length, total: overdue.reduce((s, i) => s + i.total, 0n), color: 'bg-red-400' },
-    { label: 'Open', count: openNotOverdue.length, total: openNotOverdue.reduce((s, i) => s + i.total, 0n), color: 'bg-amber-400' },
-    { label: 'Paid (30 days)', count: paidRecently.length, total: paidRecently.reduce((s, i) => s + i.total, 0n), color: 'bg-teal-400' },
-  ];
-  const invoiceGrandTotal = invoiceBuckets.reduce((s, b) => s + b.total, 0n) || 1n;
+  // Month-to-month status, newest first. (Phase B turns this into the full
+  // per-month checklist with close/reopen rules.)
+  const closedThrough = business.booksClosedThrough;
+  const closedEnds = new Set(closes.map((c) => c.periodEnd.toISOString().slice(0, 10)));
+  const monthRows = months
+    .map((m, i) => {
+      const counts = Object.fromEntries(toReviewByMonth[i].map((g) => [g.status, g._count._all]));
+      const total = Object.values(counts).reduce((s: number, n) => s + (n as number), 0);
+      const pending = counts.PENDING ?? 0;
+      const isCurrent = i === months.length - 1;
+      const closed = (closedThrough && m.to <= closedThrough) || closedEnds.has(m.to.toISOString().slice(0, 10));
+      const status = closed
+        ? { label: 'Closed', cls: 'bg-green-100 text-green-700' }
+        : pending > 0
+          ? { label: `${pending} to review`, cls: 'bg-amber-100 text-amber-800' }
+          : total === 0
+            ? { label: connections.length ? 'No bank data' : 'Bank not connected', cls: 'bg-slate-100 text-slate-500' }
+            : isCurrent
+              ? { label: 'In progress', cls: 'bg-teal-50 text-teal-700' }
+              : { label: 'Ready to close', cls: 'bg-teal-100 text-teal-800' };
+      return { label: m.from.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }), status, net: monthlyPnl[i].netIncome };
+    })
+    .reverse();
+  const totalToReview = toReviewByMonth.flat().filter((g) => g.status === 'PENDING').reduce((s, g) => s + g._count._all, 0);
+
+  const reportable = totals1099.filter((t) => t.status === 'REPORTABLE');
+  const approaching = totals1099.filter((t) => t.status === 'APPROACHING');
+  const missingW9 = reportable.filter((t) => !t.is1099Eligible);
+
+  const CONN: Record<string, { label: string; cls: string }> = {
+    ACTIVE: { label: 'OK', cls: 'bg-green-100 text-green-700' },
+    ERROR: { label: 'Sync error', cls: 'bg-red-100 text-red-700' },
+    NEEDS_RECONNECT: { label: 'Needs reconnect', cls: 'bg-amber-100 text-amber-800' },
+  };
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold text-[var(--wave-navy)]">{business.name}</h1>
         <p className="text-sm text-slate-500 mt-1">
-          {business.accountingBasis === 'ACCRUAL' ? 'Accrual basis' : 'Cash basis'} · Functional currency {currency}
+          {business.accountingBasis === 'ACCRUAL' ? 'Accrual basis' : 'Cash basis'} · books closed through{' '}
+          {closedThrough ? closedThrough.toISOString().slice(0, 10) : 'never'}
         </p>
       </div>
 
@@ -96,12 +124,33 @@ export default async function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+            <h2 className="font-medium text-[var(--wave-navy)]">Months</h2>
+            <Link href="/close" className="text-sm font-medium text-teal-600 hover:underline">Open months</Link>
+          </div>
+          <ul className="divide-y divide-slate-50">
+            {monthRows.map((m) => (
+              <li key={m.label} className="flex items-center justify-between px-5 py-2.5 text-sm">
+                <span>{m.label}</span>
+                <span className="flex items-center gap-3">
+                  <span className={`tabular-nums ${m.net < 0n ? 'text-red-600' : 'text-slate-600'}`}>{formatMoney(m.net, currency)}</span>
+                  <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${m.status.cls}`}>{m.status.label}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
         <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="font-medium text-[var(--wave-navy)]">Profit &amp; Loss</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="font-medium text-[var(--wave-navy)]">Profit &amp; Loss</h2>
+            <Link href="/reports/profit-loss" className="text-sm font-medium text-teal-600 hover:underline">Full report</Link>
+          </div>
           <p className="text-xs text-slate-500 mt-0.5">Net income by month, last 6 months</p>
-          <div className="mt-5 flex items-end gap-3 h-32">
+          <div className="mt-5 flex items-end gap-3 h-40">
             {trend.map((t) => {
-              const barHeight = Math.max(4, Number((t.netIncome < 0n ? -t.netIncome : t.netIncome) * 100n / maxAbs));
+              const barHeight = Math.max(4, Number((abs(t.netIncome) * 100n) / maxAbs));
               return (
                 <div key={t.label} className="flex-1 flex flex-col items-center justify-end h-full gap-1.5">
                   <div className="w-full flex flex-col justify-end h-full">
@@ -117,91 +166,66 @@ export default async function Dashboard() {
             })}
           </div>
         </div>
-
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="font-medium text-[var(--wave-navy)]">Invoices</h2>
-            <Link href="/invoices" className="text-sm font-medium text-teal-600 hover:underline">
-              View all
-            </Link>
-          </div>
-          <div className="mt-4 flex h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
-            {invoiceBuckets.map((b) => (
-              <div
-                key={b.label}
-                className={b.color}
-                style={{ width: `${Number((b.total * 100n) / invoiceGrandTotal)}%` }}
-              />
-            ))}
-          </div>
-          <ul className="mt-4 space-y-2.5">
-            {invoiceBuckets.map((b) => (
-              <li key={b.label} className="flex items-center justify-between text-sm">
-                <span className="flex items-center gap-2 text-slate-600">
-                  <span className={`inline-block h-2.5 w-2.5 rounded-full ${b.color}`} />
-                  {b.label} ({b.count})
-                </span>
-                <span className="font-medium tabular-nums text-[var(--wave-navy)]">
-                  {formatMoney(b.total, currency)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <h2 className="font-medium text-[var(--wave-navy)]">Recent journal entries</h2>
-          <Link
-            href="/journal/new"
-            className="rounded-md bg-teal-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-600"
-          >
-            + New entry
-          </Link>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="font-medium text-[var(--wave-navy)]">Bank accounts</h2>
+            <Link href="/banking" className="text-sm font-medium text-teal-600 hover:underline">
+              {connections.length ? 'Manage' : 'Connect a bank'}
+            </Link>
+          </div>
+          {connections.length === 0 ? (
+            <p className="text-sm text-slate-500">No bank connected yet. Connect one and transactions arrive on their own.</p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {connections.map((c) => {
+                const st = CONN[c.status] ?? CONN.ERROR;
+                return (
+                  <li key={c.id} className="flex items-center justify-between">
+                    <span>
+                      {c.institutionName}{' '}
+                      <span className="text-slate-400">
+                        · {c._count.accounts} account{c._count.accounts === 1 ? '' : 's'} · last sync{' '}
+                        {c.lastSyncAt ? c.lastSyncAt.toISOString().slice(0, 10) : 'never'}
+                      </span>
+                    </span>
+                    <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${st.cls}`}>{st.label}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {(totalToReview > 0 || flaggedCount > 0) && (
+            <Link href="/banking" className="block rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 hover:bg-amber-100">
+              {totalToReview > 0 && <>{totalToReview} transaction{totalToReview === 1 ? '' : 's'} to review</>}
+              {totalToReview > 0 && flaggedCount > 0 && ' · '}
+              {flaggedCount > 0 && <>{flaggedCount} changed by the bank after posting</>}
+            </Link>
+          )}
         </div>
-        <table className="w-full text-sm">
-          <tbody>
-            {recent.map((e) => {
-              const total = e.lines
-                .filter((l) => l.direction === 'DEBIT')
-                .reduce((s, l) => s + l.functionalAmount, 0n);
-              return (
-                <tr key={e.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50">
-                  <td className="px-5 py-3 text-slate-500 whitespace-nowrap">
-                    {e.date.toISOString().slice(0, 10)}
-                  </td>
-                  <td className="px-3 py-3 text-slate-400 whitespace-nowrap">JE-{e.entryNumber}</td>
-                  <td className="px-3 py-3 w-full">
-                    <Link href={`/journal/${e.id}`} className="hover:underline">
-                      {e.memo}
-                    </Link>
-                    {e.reversedBy && (
-                      <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700">
-                        Reversed
-                      </span>
-                    )}
-                    {e.reversesId && (
-                      <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
-                        Reversal
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-5 py-3 text-right tabular-nums whitespace-nowrap">
-                    {formatMoney(total, currency)}
-                  </td>
-                </tr>
-              );
-            })}
-            {recent.length === 0 && (
-              <tr>
-                <td className="px-5 py-6 text-slate-400" colSpan={4}>
-                  No entries yet — post your first journal entry.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="font-medium text-[var(--wave-navy)]">1099 watch · {taxYear}</h2>
+            <Link href="/1099" className="text-sm font-medium text-teal-600 hover:underline">Open 1099s</Link>
+          </div>
+          <dl className="grid grid-cols-3 gap-3 text-center">
+            <div className="rounded-lg bg-slate-50 py-3">
+              <dt className="text-xs text-slate-500">Need a 1099</dt>
+              <dd className="text-xl font-semibold text-[var(--wave-navy)]">{reportable.length}</dd>
+            </div>
+            <div className="rounded-lg bg-slate-50 py-3">
+              <dt className="text-xs text-slate-500">Approaching</dt>
+              <dd className="text-xl font-semibold text-[var(--wave-navy)]">{approaching.length}</dd>
+            </div>
+            <div className={`rounded-lg py-3 ${missingW9.length ? 'bg-red-50' : 'bg-slate-50'}`}>
+              <dt className="text-xs text-slate-500">Missing W-9</dt>
+              <dd className={`text-xl font-semibold ${missingW9.length ? 'text-red-600' : 'text-[var(--wave-navy)]'}`}>{missingW9.length}</dd>
+            </div>
+          </dl>
+        </div>
       </div>
     </div>
   );

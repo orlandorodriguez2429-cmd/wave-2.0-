@@ -7,108 +7,51 @@ import { NavIcon, type NavIconName } from '@/components/nav-icon';
 
 type Item = { href: string; label: string; badge?: string };
 
-const createLinks: Item[] = [
-  { href: '/invoices/new', label: 'Invoice' },
-  { href: '/estimates/new', label: 'Estimate' },
-  { href: '/bills/new', label: 'Bill' },
-  { href: '/expenses/new', label: 'Expense' },
-  { href: '/journal/new', label: 'Journal transaction' },
+// The app does four things: month-to-month books, bank connections, Profit &
+// Loss, and 1099s. Everything else in the codebase (invoicing, bills,
+// payroll, …) is deliberately left out of the menu; the pages still exist and
+// can be brought back by adding them here.
+
+const form1099Links: Item[] = [
+  { href: '/1099', label: '1099 tracking' },
+  { href: '/vendors', label: 'Contractors & W-9s' },
+  { href: '/1099/forms', label: '1099 forms & e-file' },
+  { href: '/settings/1099', label: '1099 settings' },
 ];
 
-const salesLinks: Item[] = [
-  { href: '/estimates', label: 'Estimates' },
-  { href: '/invoices', label: 'Invoices' },
-  { href: '/settings/payments', label: 'Payments Setup' },
-  { href: '/invoices/recurring', label: 'Recurring Invoices' },
-  { href: '/checkouts', label: 'Checkouts' },
-  { href: '/customers/statements', label: 'Customer Statements' },
-  { href: '/customers', label: 'Customers' },
-  { href: '/products', label: 'Products & Services' },
-];
-
-const purchasesLinks: Item[] = [
-  { href: '/bills', label: 'Bills' },
-  { href: '/vendors', label: 'Vendors' },
-  { href: '/products', label: 'Products & Services' },
-];
-
-const accountingLinks: Item[] = [
-  { href: '/journal', label: 'Transactions' },
-  { href: '/accounting/tags', label: 'Tags', badge: 'New' },
-  { href: '/accounts', label: 'Chart of Accounts' },
-  { href: '/close', label: 'Close the Books' },
-  { href: '/audit', label: 'Audit Log' },
-  { href: '/accounting/hire-a-bookkeeper', label: 'Hire a Bookkeeper' },
-];
-
-const bankingLinks: Item[] = [
-  { href: '/banking', label: 'Connected Accounts' },
-  { href: '/banking/payouts', label: 'Payouts' },
-  { href: '/banking/insurance', label: 'Insurance' },
-];
-
-const payrollLinks: Item[] = [
-  { href: '/payroll', label: 'Payroll Dashboard' },
-  { href: '/payroll/employees', label: 'Employees' },
-  { href: '/payroll/timesheets', label: 'Payroll Timesheets' },
-  { href: '/payroll/transactions', label: 'Payroll Transactions' },
-  { href: '/payroll/taxes', label: 'Taxes' },
-  { href: '/payroll/tax-forms', label: 'Tax Forms' },
+// Accountant tools needed to fix the books (corrections are reversals).
+const booksLinks: Item[] = [
+  { href: '/journal', label: 'Journal entries' },
+  { href: '/accounts', label: 'Chart of accounts' },
+  { href: '/banking/rules', label: 'Categorization rules' },
+  { href: '/banking/reconcile', label: 'Reconciliation' },
+  { href: '/audit', label: 'Audit log' },
 ];
 
 export function SidebarNav() {
   const pathname = usePathname();
-  const [createOpen, setCreateOpen] = useState(false);
   const [open, setOpen] = useState({
-    sales: true,
-    purchases: false,
-    accounting: false,
-    banking: false,
-    payroll: false,
+    f1099: pathname?.startsWith('/1099') || pathname?.startsWith('/vendors') || pathname === '/settings/1099',
+    books: false,
   });
   const toggle = (key: keyof typeof open) => setOpen((prev) => ({ ...prev, [key]: !prev[key] }));
 
   return (
     <nav className="px-3 pb-3 space-y-0.5 flex-1 overflow-y-auto">
-      <div className="relative mb-3">
-        <button
-          onClick={() => setCreateOpen((v) => !v)}
-          className="w-full flex items-center justify-center gap-1.5 rounded-md bg-teal-500 px-3 py-2 text-sm font-semibold text-[#0e2438] hover:bg-teal-400"
-        >
-          <span className="text-base leading-none">+</span> Create new
-        </button>
-        {createOpen && (
-          <div className="absolute z-10 mt-1 w-full rounded-md border border-slate-700 bg-[#122c44] py-1 shadow-lg">
-            {createLinks.map((l) => (
-              <Link
-                key={l.href}
-                href={l.href}
-                onClick={() => setCreateOpen(false)}
-                className="block px-3 py-1.5 text-sm text-slate-200 hover:bg-white/10 hover:text-white"
-              >
-                {l.label}
-              </Link>
-            ))}
-          </div>
-        )}
-      </div>
-
       <TopLink href="/" label="Dashboard" icon="dashboard" active={pathname === '/'} />
+      <TopLink href="/banking" label="Bank accounts" icon="banking" active={pathname === '/banking'} />
+      <TopLink href="/close" label="Months" icon="accounting" active={pathname === '/close'} />
+      <TopLink
+        href="/reports/profit-loss"
+        label="Profit & Loss"
+        icon="reports"
+        active={pathname === '/reports/profit-loss'}
+      />
+      <Section title="1099s" icon="tax" open={!!open.f1099} onToggle={() => toggle('f1099')} links={form1099Links} pathname={pathname} />
 
-      <Section title="Sales & Payments" icon="sales" open={open.sales} onToggle={() => toggle('sales')} links={salesLinks} pathname={pathname} />
-      <Section title="Purchases" icon="purchases" open={open.purchases} onToggle={() => toggle('purchases')} links={purchasesLinks} pathname={pathname} />
-      <TopLink href="/receipts" label="Receipts" icon="receipts" active={pathname === '/receipts'} />
-      <Section title="Accounting" icon="accounting" open={open.accounting} onToggle={() => toggle('accounting')} links={accountingLinks} pathname={pathname} />
-      <Section title="Banking" icon="banking" open={open.banking} onToggle={() => toggle('banking')} links={bankingLinks} pathname={pathname} />
-      <Section title="Payroll" icon="payroll" open={open.payroll} onToggle={() => toggle('payroll')} links={payrollLinks} pathname={pathname} />
-      <TopLink href="/reports" label="Reports" icon="reports" active={pathname === '/reports'} />
-      <TopLink href="/advisors" label="Wave Advisors" icon="advisors" active={pathname === '/advisors'} />
-      <TopLink href="/tax-filing" label="Tax filing" icon="tax" active={pathname?.startsWith('/tax-filing')} />
-      <TopLink href="/perks" label="Perks" icon="perks" badge="New" active={pathname === '/perks'} />
-
-      <p className="px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Settings</p>
-      <TopLink href="/settings/invoicing" label="Invoicing" small active={pathname === '/settings/invoicing'} />
-      <TopLink href="/settings/team" label="Team & API" small active={pathname === '/settings/team'} />
+      <p className="px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Accountant</p>
+      <Section title="Books" icon="purchases" open={open.books} onToggle={() => toggle('books')} links={booksLinks} pathname={pathname} />
+      <TopLink href="/settings/team" label="Team" small active={pathname === '/settings/team'} />
     </nav>
   );
 }

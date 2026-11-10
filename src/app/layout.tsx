@@ -11,8 +11,8 @@ const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Wave 2.0',
-  description: 'Double-entry accounting for small businesses',
+  title: 'Your Tax Solution Books',
+  description: 'Month-to-month bookkeeping, Profit & Loss and 1099s, fed by your bank.',
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -32,14 +32,14 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <div className="flex min-h-screen">
           <aside className="w-60 shrink-0 bg-[#0e2438] flex flex-col">
             <div className="px-5 py-5 flex items-center gap-2">
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-teal-500 text-[#0e2438] font-bold text-sm">
-                W
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-500 text-[#0e2438] font-bold text-xs">
+                YT
               </span>
               <div>
                 <Link href="/" className="text-base font-semibold tracking-tight text-white leading-none">
-                  Wave&nbsp;2.0
+                  Your Tax Solution
                 </Link>
-                <p className="text-[11px] text-slate-400 mt-0.5">Small-business accounting</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Books · P&amp;L · 1099</p>
               </div>
             </div>
             <SidebarNav />

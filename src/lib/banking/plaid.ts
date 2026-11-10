@@ -18,7 +18,7 @@ export const DAYS_REQUESTED = 730;
 /** Account types we import as bank feeds. Loans/investments come later. */
 export const IMPORTED_ACCOUNT_TYPES = new Set(['depository', 'credit']);
 
-const CLIENT_NAME = 'Wave 2.0';
+const CLIENT_NAME = 'Your Tax Solution';
 
 // --- Mapping (pure, unit-tested) ---------------------------------------------
 

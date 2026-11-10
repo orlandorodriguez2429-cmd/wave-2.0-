@@ -20,7 +20,7 @@ export default async function ClosePage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-2xl font-semibold">Close the Books</h1>
+        <h1 className="text-2xl font-semibold">Months</h1>
         <p className="text-sm text-slate-500 mt-1">
           Work the checklist, then close the period — the ledger refuses new postings dated in a closed
           period. Books currently closed through:{' '}
