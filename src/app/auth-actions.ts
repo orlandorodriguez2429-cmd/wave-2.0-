@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/db';
 import {
+  readSession,
   burnPasswordCheck,
   endSession,
   hashPassword,
@@ -19,6 +20,7 @@ import { createBusiness } from '@/lib/ledger/business';
 import { confirmEnrollment, resetMfa, verifyLoginCode } from '@/lib/mfa';
 import { hit, isLocked, LIMITS, recordFailure, recordSuccess } from '@/lib/rate-limit';
 import { acceptInvite, createInvite, InviteError } from '@/lib/invites';
+import { deleteBusiness } from '@/lib/retention';
 import type { MembershipRole } from '@/generated/prisma/enums';
 import type { ActionResult } from './actions';
 
@@ -251,4 +253,47 @@ export async function removeMemberAction(membershipId: string): Promise<void> {
     },
   });
   revalidatePath('/settings/team');
+}
+
+/** Owner deletes the whole business (Plaid items removed first; a deletion record is kept). */
+export async function deleteBusinessAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  const { user, business } = await requireContext('OWNER');
+  try {
+    await deleteBusiness({ businessId: business.id, userId: user.id, confirmName: String(formData.get('confirmName') ?? '') });
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Could not delete.' };
+  }
+  const next = await prisma.membership.findFirst({ where: { userId: user.id }, orderBy: { createdAt: 'asc' } });
+  const me = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+  if (next) {
+    await startSession({ userId: user.id, businessId: next.businessId, role: next.role, sv: me.sessionVersion });
+    redirect('/');
+  }
+  await endSession();
+  redirect('/login');
+}
+
+/** Any signed-in user (staff or client) changes their own password. Other sessions end. */
+export async function changePasswordAction(_prev: ActionResult & { message?: string }, formData: FormData): Promise<ActionResult & { message?: string }> {
+  const session = await readSession();
+  if (!session) redirect('/login');
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: session.userId } });
+  if (!(await hit(`password:user:${user.id}`, LIMITS.mfaPerUser))) return { error: TOO_MANY };
+  const current = String(formData.get('current') ?? '');
+  const next = String(formData.get('next') ?? '');
+  if (!user.passwordHash || !(await verifyPassword(current, user.passwordHash))) {
+    await recordFailure(user.id);
+    return { error: 'Current password is not right.' };
+  }
+  if (next.length < 12) return { error: 'Choose a new password of at least 12 characters.' };
+  if (next !== String(formData.get('confirm') ?? '')) return { error: 'The two new passwords do not match.' };
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash: await hashPassword(next), sessionVersion: { increment: 1 } },
+  });
+  await startSession({ userId: user.id, businessId: session.businessId, role: session.role, sv: updated.sessionVersion });
+  await prisma.auditLog.create({
+    data: { businessId: session.businessId, userId: user.id, action: 'auth.password_changed', entityType: 'user', entityId: user.id, payload: {} },
+  });
+  return { message: 'Password changed. Other devices have been signed out.' };
 }

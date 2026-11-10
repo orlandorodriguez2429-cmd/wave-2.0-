@@ -37,7 +37,7 @@ export function ClientNav({ businessName, userName }: { businessName: string; us
           })}
         </nav>
         <div className="flex items-center gap-3 text-sm">
-          <span className="text-slate-400">{userName}</span>
+          <Link href="/client/account" className="text-slate-400 hover:text-white">{userName}</Link>
           <button disabled={pending} onClick={() => start(() => logoutAction())} className="text-slate-300 hover:text-white">Sign out</button>
         </div>
       </div>

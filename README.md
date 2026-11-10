@@ -1,73 +1,88 @@
-# Wave 2.0
+# Your Tax Solution Books
 
-Small-business accounting with correct double-entry bookkeeping underneath, and a first-class 1099 contractor workflow on top. See [PROJECT.md](./PROJECT.md) for the full product brief and phase plan.
+Month-to-month bookkeeping for a tax and bookkeeping office's clients:
 
-**Status: Phases 1–6 built** — ledger core · invoicing & expenses · bank feeds & reconciliation · W-9/1099 tracking · 1099 generation & e-file · reports, auth, multi-entity, roles, close-the-books, API.
+1. **Bank in, automatically.** Each client connects their bank once (Plaid
+   Link) — or you upload a statement CSV. New transactions arrive by webhook,
+   with a daily backstop sync.
+2. **Sorted automatically.** Transfers between the client's own accounts,
+   then your rules (including ones learned from your corrections), then
+   built-in merchant rules, then an AI fallback. Only the unclear ones come
+   to you. Balance-sheet items (transfers, card payments, owner draws, loans,
+   sales tax) stay off the P&L; loan payments get an interest/principal split.
+3. **Close each month.** Every month shows: not connected / no bank data /
+   N to review / ready / closed. Closing is blocked while anything is
+   unreviewed; reopening needs a reason and is audit-logged.
+4. **Profit & Loss** any month, quarter or year, with PDF/CSV export.
+5. **1099s:** W-9 collection, payment tracking with thresholds, form
+   generation and e-file behind an explicit human "Submit to IRS" step.
+6. **Client portal:** each client signs in (two-step verification required)
+   and sees only their own business, read-only: dashboard, months, P&L,
+   transactions, and their bank connection.
+7. **All clients view** for the office: bank status, last sync, items to
+   review, months not closed, 1099 watch — problems first.
 
-## Stack
+Underneath: real double-entry bookkeeping (integer cents, immutable ledger,
+corrections by reversal only), multi-business, roles, append-only audit log.
 
-- Next.js 15 (App Router) + TypeScript + Tailwind CSS 4
-- PostgreSQL via Prisma 7 (`@prisma/adapter-pg` driver adapter)
-- pdfkit (invoice + 1099 PDFs), Vitest (unit + DB integration tests)
+## Run it locally
 
-## Getting started
+Requirements: Node 20+, PostgreSQL 14+ (or just Docker).
 
-Requirements: Node 20+, PostgreSQL 14+.
+**Docker (quickest):**
+
+```bash
+docker compose up
+```
+
+Open http://localhost:3000, sign in as `demo@wave2.local` / `demo-password-123`,
+and set up two-step verification with any authenticator app.
+
+**Without Docker:**
 
 ```bash
 npm install
-
-# database + role (adjust to taste)
-sudo -u postgres psql \
-  -c "CREATE ROLE wave WITH LOGIN PASSWORD 'wave_dev_password' CREATEDB;" \
-  -c "CREATE DATABASE wave OWNER wave;"
-
-cp .env.example .env   # set DATABASE_URL and a real ENCRYPTION_KEY (32 bytes base64)
-
-npx prisma migrate deploy   # apply all migrations
-npx prisma db seed          # demo business + sample data
-npm run dev                 # http://localhost:3000
+cp .env.example .env          # set DATABASE_URL and ENCRYPTION_KEY
+npx prisma migrate deploy
+npx prisma db seed            # demo business + sample data
+npm run dev
 ```
 
-**Demo login:** `demo@wave2.local` / `demo-password-123`
+Everything works without any external keys: the bank feed uses a built-in
+sandbox, categorization uses rules (AI is skipped without a key), email is
+printed to the server console.
 
-Background jobs (recurring invoices): `npx tsx scripts/run-jobs.ts` on a cron.
-Tests: `npx vitest run` (127 tests; integration tests hit `DATABASE_URL`).
+Tests: `npx vitest run` (unit + database integration; needs `DATABASE_URL`).
 
-## Environment
+## Configuration
+
+See `.env.example` for every variable. The important ones:
 
 | Variable | Purpose |
 | --- | --- |
-| `DATABASE_URL` | Postgres connection (this is a ledger — Postgres only). |
-| `ENCRYPTION_KEY` | 32 bytes base64; AES-256-GCM for TINs, EINs, bank tokens. Sessions are HMAC-signed with a derived key. |
-| `EFILE_TRANSMITTER` | `mock` (sandbox provider, default) or `iris` (needs `IRIS_TCC` + credentials). |
-| `PLAID_CLIENT_ID` / `PLAID_SECRET` | Activates the real Plaid adapter (the built-in sandbox feed works without). |
-| `PLAID_ENV` | `sandbox` (default) or `production` — production only after Plaid approves your production access. |
-| `PLAID_WEBHOOK_URL` | Public HTTPS URL of `/api/plaid/webhook`. Without it, new transactions only arrive via "Sync now". |
-| `EMAIL_PROVIDER` | `console` (sandbox, default — logs and records the email, no network call) or `smtp` (needs `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM`). |
+| `DATABASE_URL` | Postgres. |
+| `ENCRYPTION_KEY` | 32 random bytes, base64. Encrypts bank tokens, TINs, MFA secrets; signs sessions. Back it up — backups are unreadable without it. |
+| `PLAID_CLIENT_ID` / `PLAID_SECRET` / `PLAID_ENV` / `PLAID_WEBHOOK_URL` | Real bank connections (sandbox until Plaid approves production). |
+| `ANTHROPIC_API_KEY` | Optional AI categorization fallback. |
+| `CRON_SECRET` | Protects `POST /api/cron/sync` (daily backstop sync). |
+| `APP_URL` | Public https address (invitation links). |
+| `EMAIL_PROVIDER` + `SMTP_*` | `console` in development, `smtp` in production. |
 
-## Architecture notes
+In production the server refuses to start without `ENCRYPTION_KEY`,
+`PLAID_*`, `CRON_SECRET` and an https `APP_URL`.
 
-- **Double entry, always.** Balanced debit/credit journal entries against the chart of accounts; enforced in the service layer *and* by Postgres triggers (posting gate, immutability of posted entries and lines, positive-amount CHECKs). Corrections are linked reversing entries — nothing is ever edited in place.
-- **Money is integers** (BigInt minor units) end to end; quantities in thousandths; tax rates in parts-per-million; FX via just-in-time integer arithmetic with rounding-residue allocation.
-- **Every business document posts through the same engine**: invoice approval, payments, voids, expenses, bills, bill payments, late fees, bank-feed categorizations. Bills are enter-now-pay-later (Dr Expense / Cr Accounts Payable on approval, Dr A/P / Cr cash on payment) — distinct from Expenses, which record money already paid. Late fees are opt-in per business (a configurable percentage, not a code constant), one-time per invoice, and post to a dedicated Late Fee Income account. Reports (trial balance, P&L, balance sheet, cash flow, sales tax, aged receivables, aged payables) are derived at query time and export to CSV.
-- **Cash vs. accrual, for real.** The ledger itself is accrual (revenue/expense recognized at invoice/bill approval). The P&L report has an Accrual/Cash toggle — cash basis re-derives recognition from actual payment dates (allocating each customer/bill payment back across the original document's lines) instead of re-filtering posted entries, so it's not just a label.
-- **Checkouts** are standalone payment links (not tied to an invoice) — post Dr deposit account / Cr a chosen income account through the same engine, same sandbox-pay convention as invoice portal payments. **Products & Services** is a shared price-list catalog (name, price, income account) for Sales & Payments and Purchases — not yet wired into the invoice/bill line-item pickers. **Recurring Invoices** has a management UI on top of the existing scheduler (create/pause/resume/delete). **Customer Statements** is a per-customer running-balance report.
-- **Payroll is deliberately partial.** Employees and Timesheets are real (a directory and hours log, no wage math). Payroll runs, tax withholding, and tax forms are honest "not built" pages — they need a licensed payroll-tax provider this project doesn't have, the same category of gap as receipt OCR.
-- **1099 pipeline** (the differentiator): W-9 collection via single-use public links with e-consent capture → per-year, per-box payment accumulation with the card/1099-K exclusion → per-tax-year configurable thresholds ($600 → $2,000 for TY2026+, editable, verify against IRS.gov) → versioned immutable forms with linked corrections → pluggable transmitter (sandbox provider now, direct IRIS A2A stub behind a TCC) → Copy B delivery with consent rules. E-file submission only ever happens behind an explicit human confirmation click.
-- **Secrets**: TINs/EINs/bank tokens stored AES-256-GCM encrypted, displayed masked, never logged or put in audit payloads. API tokens stored as SHA-256 hashes.
-- **Auth & tenancy**: signed cookie sessions, multi-business per login with a switcher, roles (owner / accountant / employee / view-only) enforced in every mutating action, append-only audit log, period close locks the ledger.
-- **Developer API**: `GET /api/v1/{accounts,invoices,reports/trial-balance}`, `GET|POST /api/v1/webhooks` with `Authorization: Bearer wave_…`; webhook deliveries HMAC-signed (`X-Wave-Signature`).
+## Docs
 
-## Bank feeds (Plaid)
+- **[DEPLOY.md](./DEPLOY.md)** — hosting recommendation (Render), step-by-step
+  deploy, migrations, Plaid webhook, daily sync, backups and test restore,
+  production checklist.
+- **[SECURITY.md](./SECURITY.md)** — access control, encryption, MFA, logging,
+  vendors, retention, incident response. Written for Plaid's security
+  questionnaire and the office's written information security plan.
+- [PROJECT.md](./PROJECT.md) — the original product brief (historical).
 
-- **Connect:** Banking → *Connect a bank* opens Plaid Link. The browser only gets a short-lived `link_token`; the returned `public_token` is exchanged server-side and the `access_token` is stored AES-256-GCM encrypted. Bank usernames/passwords never touch this app. `client_user_id` is our internal user id, never an email.
-- **Accounts:** checking/savings become new *Cash & Bank* ledger accounts (codes 1011+), credit cards new *Credit Card* liability accounts (2101+), one per bank account, remappable until something from that account is posted. Loans/investments are not imported yet.
-- **Sync:** `/transactions/sync` with a stored cursor; all pages are applied in one DB transaction and the cursor is saved only on commit. Pending transactions are skipped until they post. Bank-side *modified*/*removed* changes update or delete rows that aren't on the books yet; rows already posted are **flagged for review, never edited** (fix via reversal).
-- **Webhook:** `POST /api/plaid/webhook` verifies every call (ES256 `Plaid-Verification` JWT against `/webhook_verification_key/get`, 5-minute freshness, SHA-256 body hash) and 401s anything else. `SYNC_UPDATES_AVAILABLE` triggers a sync after the response; `ITEM_LOGIN_REQUIRED` / `PENDING_EXPIRATION` / `ERROR` mark the connection *needs reconnect* (Reconnect button = Link update mode); `LOGIN_REPAIRED` clears it.
-- **Disconnect:** `/item/remove`, then the connection is marked removed and its token wiped; imported history stays.
-- **Sandbox walkthrough:** with sandbox keys set, Connect a bank → pick any institution (e.g. *First Platypus Bank*) → `user_good` / `pass_good` → transactions appear (Plaid may take a few seconds to prepare history; press *Sync now* if no webhook URL is set).
+## Stack
 
-## What is sandboxed vs production-ready
-
-Real external integrations are behind adapters with working sandbox implementations: bank feeds (mock provider ↔ Plaid), invoice payments and Checkouts (sandbox pay button ↔ Stripe Checkout/Connect), e-file (mock transmitter ↔ provider API / IRIS A2A), file storage (local disk ↔ S3), invoice reminders (console/log provider ↔ SMTP). Receipt OCR and full W-2 payroll (tax withholding, filings, direct deposit) are noted future work — both need a third-party integration and a data-model decision this project hasn't made yet. Business insurance quotes and payroll-tax filing specifically need a licensed partner, not just an API key.
+Next.js 15 (App Router) · TypeScript · Tailwind · PostgreSQL via Prisma 7 ·
+Plaid (`plaid`, `react-plaid-link`) · Anthropic SDK · pdfkit · nodemailer ·
+Vitest.

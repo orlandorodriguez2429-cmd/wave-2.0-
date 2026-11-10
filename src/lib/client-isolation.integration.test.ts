@@ -138,3 +138,18 @@ describe('session rotation', () => {
     expect(await readSession()).toBeNull();
   });
 });
+
+describe('staff view audit', () => {
+  it('logs who opened which page for which business, once per 15 minutes', async () => {
+    // Re-mock headers for this case: the middleware sets x-yts-path.
+    const h = await import('next/headers');
+    const spy = vi.spyOn(h, 'headers').mockImplementation(async () => new Headers({ 'x-yts-path': '/reports/profit-loss' }) as never);
+    await loginAs(staffUser, ownBiz, 'OWNER');
+    await getCurrentContext();
+    await getCurrentContext();
+    const logs = await prisma.auditLog.findMany({ where: { businessId: ownBiz, userId: staffUser, action: 'data.viewed' } });
+    expect(logs).toHaveLength(1);
+    expect(logs[0].entityId).toBe('/reports/profit-loss');
+    spy.mockRestore();
+  });
+});

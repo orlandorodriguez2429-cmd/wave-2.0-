@@ -10,6 +10,10 @@ import { parseAmount } from '../src/lib/money';
 const DEMO_EMAIL = 'demo@wave2.local';
 
 async function main() {
+  if (process.env.NODE_ENV === 'production' && process.env.SEED_DEMO_DATA !== 'true') {
+    console.log('Seed: production and SEED_DEMO_DATA is not "true" — refusing to load demo data.');
+    return;
+  }
   let user = await prisma.user.findUnique({ where: { email: DEMO_EMAIL } });
   let business;
   if (user) {

@@ -27,6 +27,7 @@ const PUBLIC_PREFIXES = [
   '/pay/',
   '/api/plaid/webhook',
   '/api/cron/',
+  '/api/health',
   '/api/v1/',
   '/privacy',
   '/terms',
@@ -75,7 +76,11 @@ export async function middleware(req: NextRequest) {
     return withSecurityHeaders(new NextResponse('Not found', { status: 404 }));
   }
 
-  const res = NextResponse.next();
+  // Tell the server which page this is (for view audit logging). Any value
+  // a browser sent in this header is overwritten.
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set('x-yts-path', path);
+  const res = NextResponse.next({ request: { headers: requestHeaders } });
   if (now - payload.lastActive >= REFRESH_AFTER_SECONDS) {
     const refreshed = await signToken({ ...payload, lastActive: now });
     res.cookies.set(sessionCookieName(), refreshed, cookieOptions(Math.max(60, payload.exp - now) || MAX_SESSION_SECONDS));

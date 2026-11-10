@@ -1,4 +1,6 @@
+import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
+import { hit } from '@/lib/rate-limit';
 import { prisma } from '@/lib/db';
 import { readSession, requireRole } from '@/lib/auth';
 import type { MembershipRole } from '@/generated/prisma/enums';
@@ -31,6 +33,7 @@ export async function getCurrentContext(): Promise<AppContext> {
   const { session, user } = await loadSession();
   if (user.memberships.some((m) => m.role === 'CLIENT')) notFound();
   const membership = user.memberships.find((m) => m.businessId === session.businessId) ?? user.memberships[0];
+  await auditStaffView(user.id, membership.businessId);
   return {
     user: { id: user.id, email: user.email, name: user.name },
     business: membership.business,
@@ -61,4 +64,28 @@ export async function getClientContext(): Promise<ClientContext> {
   const memberships = user.memberships.filter((m) => m.role === 'CLIENT');
   if (memberships.length !== 1 || user.memberships.length !== 1) notFound();
   return { user: { id: user.id, email: user.email, name: user.name }, business: memberships[0].business };
+}
+
+/**
+ * Every time staff open a page with a client's financial data, the audit log
+ * records who, which business, which page and when — at most once per
+ * person/business/page every 15 minutes so the log stays readable. Changes
+ * are logged separately by the actions themselves.
+ */
+async function auditStaffView(userId: string, businessId: string) {
+  let path: string | null = null;
+  let isAction = false;
+  try {
+    const h = await headers();
+    path = h.get('x-yts-path');
+    isAction = h.has('next-action');
+  } catch {
+    return; // outside a request (scripts, tests)
+  }
+  if (!path || isAction) return;
+  const first = await hit(`view:${userId}:${businessId}:${path}`, { max: 1, windowSeconds: 15 * 60 }).catch(() => false);
+  if (!first) return;
+  await prisma.auditLog
+    .create({ data: { businessId, userId, action: 'data.viewed', entityType: 'page', entityId: path.slice(0, 200), payload: { path } } })
+    .catch(() => undefined);
 }

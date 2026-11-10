@@ -4,7 +4,8 @@ import { SimpleRecordForm } from '@/components/simple-record-form';
 import { ActionButton } from '@/components/action-button';
 import { addMemberAction, removeMemberAction, resetMemberMfaAction, revokeInviteAction } from '@/app/auth-actions';
 import { revokeApiTokenAction } from '@/app/team-actions';
-import { NewBusinessForm, TokenForm, InviteClientForm } from './team-forms';
+import { NewBusinessForm, TokenForm, InviteClientForm, DeleteBusinessForm } from './team-forms';
+import { ChangePasswordForm } from '@/components/change-password-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,6 +93,11 @@ export default async function TeamPage() {
         </p>
       </section>
 
+      <section className="space-y-3">
+        <h2 className="font-medium">Your password</h2>
+        <ChangePasswordForm />
+      </section>
+
       {canInvite && (
         <section className="space-y-3">
           <h2 className="font-medium">Client portal</h2>
@@ -156,6 +162,12 @@ export default async function TeamPage() {
             <code>Authorization: Bearer &lt;token&gt;</code>. Webhook deliveries are HMAC-signed
             (X-Wave-Signature). {webhooks.length} webhook subscription(s) active.
           </p>
+        </section>
+      )}
+      {isOwner && (
+        <section className="space-y-3">
+          <h2 className="font-medium text-red-700">Delete this business</h2>
+          <DeleteBusinessForm name={business.name} />
         </section>
       )}
     </div>
