@@ -4,7 +4,18 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { requireContext } from '@/lib/context';
-import { connectBank, syncConnection } from '@/lib/banking/import';
+import {
+  clearReviewFlag,
+  connectBank,
+  connectPlaidItem,
+  disconnectConnection,
+  markReconnected,
+  remapAccountLink,
+  syncConnection,
+} from '@/lib/banking/import';
+import { createLinkToken } from '@/lib/banking/plaid';
+import { isPlaidConfigured } from '@/lib/banking/plaid-client';
+import { decryptSecret } from '@/lib/crypto';
 import { categorizeTransaction, excludeTransaction, matchTransaction } from '@/lib/banking/categorize';
 import { completeReconciliation } from '@/lib/banking/reconcile';
 import { parseAmount } from '@/lib/money';
@@ -33,7 +44,7 @@ export async function connectSandboxBankAction(_prev: ActionResult, formData: Fo
       provider: 'mock',
       ledgerAccountId,
     });
-    await syncConnection({ businessId: business.id, userId: user.id, connectionId: connection.id });
+    await syncConnection({ businessId: business.id, userId: user.id, connectionId: connection.id, trigger: 'connect' });
     revalidatePath('/banking');
     return {};
   } catch (err) {
@@ -43,7 +54,101 @@ export async function connectSandboxBankAction(_prev: ActionResult, formData: Fo
 
 export async function syncConnectionAction(connectionId: string): Promise<void> {
   const { user, business } = await requireContext('ACCOUNTANT');
-  await syncConnection({ businessId: business.id, userId: user.id, connectionId });
+  try {
+    await syncConnection({ businessId: business.id, userId: user.id, connectionId, trigger: 'manual' });
+  } finally {
+    // The connection's status/error is updated even when the sync fails.
+    revalidatePath('/banking');
+  }
+}
+
+// --- Plaid Link ---------------------------------------------------------------
+// The browser only ever receives a short-lived link_token. The public_token
+// it gets back from Link is exchanged here; the access_token stays on the
+// server, encrypted at rest.
+
+export async function createLinkTokenAction(
+  reconnectConnectionId?: string,
+): Promise<{ linkToken?: string; error?: string }> {
+  const { user, business } = await requireContext('ACCOUNTANT');
+  if (!isPlaidConfigured()) return { error: 'Plaid is not configured on this server.' };
+  try {
+    let accessToken: string | undefined;
+    if (reconnectConnectionId) {
+      const c = await prisma.bankConnection.findUnique({ where: { id: reconnectConnectionId } });
+      if (!c || c.businessId !== business.id || c.provider !== 'plaid' || !c.accessTokenEncrypted || c.status === 'REMOVED') {
+        return { error: 'Connection not found.' };
+      }
+      accessToken = decryptSecret(c.accessTokenEncrypted);
+    }
+    // client_user_id is our internal user id — never an email or name.
+    return { linkToken: await createLinkToken({ clientUserId: user.id, accessToken }) };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Could not start Plaid Link.' };
+  }
+}
+
+export async function exchangePublicTokenAction(publicToken: string): Promise<ActionResult> {
+  const { user, business } = await requireContext('ACCOUNTANT');
+  if (!isPlaidConfigured()) return { error: 'Plaid is not configured on this server.' };
+  if (typeof publicToken !== 'string' || !publicToken.startsWith('public-')) return { error: 'Invalid Link response.' };
+  try {
+    const { id } = await connectPlaidItem({ businessId: business.id, userId: user.id, publicToken });
+    // First pull. Plaid may still be preparing history; the
+    // SYNC_UPDATES_AVAILABLE webhook brings the rest.
+    await syncConnection({ businessId: business.id, userId: user.id, connectionId: id, trigger: 'connect' }).catch(
+      () => undefined,
+    );
+    revalidatePath('/banking');
+    return {};
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
+export async function markReconnectedAction(connectionId: string): Promise<ActionResult> {
+  const { user, business } = await requireContext('ACCOUNTANT');
+  try {
+    await markReconnected({ businessId: business.id, userId: user.id, connectionId });
+    await syncConnection({ businessId: business.id, userId: user.id, connectionId, trigger: 'manual' }).catch(
+      () => undefined,
+    );
+    revalidatePath('/banking');
+    return {};
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
+export async function disconnectConnectionAction(connectionId: string): Promise<void> {
+  const { user, business } = await requireContext('ACCOUNTANT');
+  await disconnectConnection({ businessId: business.id, userId: user.id, connectionId });
+  revalidatePath('/banking');
+}
+
+export async function remapAccountLinkAction(
+  linkId: string,
+  _prev: ActionResult,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { user, business } = await requireContext('ACCOUNTANT');
+  try {
+    await remapAccountLink({
+      businessId: business.id,
+      userId: user.id,
+      linkId,
+      ledgerAccountId: String(formData.get('ledgerAccountId') ?? ''),
+    });
+    revalidatePath('/banking');
+    return {};
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
+export async function clearReviewFlagAction(transactionId: string): Promise<void> {
+  const { user, business } = await requireContext('ACCOUNTANT');
+  await clearReviewFlag({ businessId: business.id, userId: user.id, transactionId });
   revalidatePath('/banking');
 }
 

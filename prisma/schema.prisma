@@ -811,8 +811,14 @@ model MileageEntry {
 
 enum BankConnectionStatus {
   ACTIVE
+  // Sync failed for a reason other than the bank login (see errorCode).
   ERROR
-  DISCONNECTED
+  // Bank login expired / consent expiring / item error: the client must
+  // re-run Plaid Link in update mode. Cleared by LOGIN_REPAIRED or a
+  // successful update-mode Link session.
+  NEEDS_RECONNECT
+  // Disconnected via /item/remove. Imported history stays; no more syncs.
+  REMOVED
 
   @@map("bank_connection_status")
 }
@@ -826,11 +832,23 @@ model BankConnection {
   institutionName String
   status          BankConnectionStatus @default(ACTIVE)
   // Provider access token, AES-256-GCM encrypted (see src/lib/crypto.ts).
-  // Never stored in plaintext; null for the mock provider.
+  // Never stored in plaintext, never logged, never sent to the browser.
+  // Null for the mock provider and wiped once the item is removed.
   accessTokenEncrypted String?
-  // Mock feed cursor; also useful as a generic sync counter.
-  syncCount       Int                  @default(0)
+  // Plaid item_id (not a secret; webhooks are keyed by it).
+  itemId          String?              @unique
+  institutionId   String?
+  // /transactions/sync cursor. Saved only after a full sync run commits.
+  cursor          String?
+  // Set by a SYNC_UPDATES_AVAILABLE webhook (or a manual request); cleared
+  // when a sync commits. The daily backstop job picks up anything left set.
+  syncRequestedAt DateTime?
   lastSyncAt      DateTime?
+  lastWebhookAt   DateTime?
+  // Plaid error_code only (e.g. ITEM_LOGIN_REQUIRED) — never a raw message.
+  errorCode       String?
+  removedAt       DateTime?
+  createdById     String?
   createdAt       DateTime             @default(now())
 
   business Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
@@ -848,8 +866,12 @@ model BankAccountLink {
   businessId        String
   externalAccountId String
   name              String
+  // Last 4 only, as Plaid returns it. Full account numbers are never fetched.
   mask              String?
   currency          String
+  // Plaid account type/subtype: depository/checking, credit/credit card, …
+  type              String?
+  subtype           String?
   ledgerAccountId   String
 
   connection   BankConnection        @relation(fields: [connectionId], references: [id], onDelete: Cascade)
@@ -892,12 +914,25 @@ model ImportedTransaction {
   // Prefill from rules / frequency heuristics; user confirms.
   suggestedAccountId   String?
   suggestedByRuleId    String?
+  // Provider hints kept for categorization (merchant + Plaid category).
+  merchantName      String?
+  providerCategory  String?
+  // The bank changed or removed this transaction after it was already on the
+  // books. The ledger is never edited by a sync: an accountant reviews and,
+  // if needed, reverses. reviewReason: PROVIDER_MODIFIED | PROVIDER_REMOVED.
+  needsReview       Boolean           @default(false)
+  reviewReason      String?
+  // What the provider now says: { date, description, amount } (amount as a
+  // string of minor units), or null for a removal.
+  providerChange    Json?
   createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @default(now()) @updatedAt
 
   bankAccountLink BankAccountLink @relation(fields: [bankAccountLinkId], references: [id], onDelete: Cascade)
 
   @@unique([bankAccountLinkId, externalId])
   @@index([businessId, status])
+  @@index([businessId, needsReview])
   @@index([bankAccountLinkId, date])
   @@map("imported_transactions")
 }

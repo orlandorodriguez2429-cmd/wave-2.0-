@@ -32,7 +32,7 @@ npm run dev                 # http://localhost:3000
 **Demo login:** `demo@wave2.local` / `demo-password-123`
 
 Background jobs (recurring invoices): `npx tsx scripts/run-jobs.ts` on a cron.
-Tests: `npx vitest run` (81 tests; integration tests hit `DATABASE_URL`).
+Tests: `npx vitest run` (127 tests; integration tests hit `DATABASE_URL`).
 
 ## Environment
 
@@ -41,7 +41,9 @@ Tests: `npx vitest run` (81 tests; integration tests hit `DATABASE_URL`).
 | `DATABASE_URL` | Postgres connection (this is a ledger — Postgres only). |
 | `ENCRYPTION_KEY` | 32 bytes base64; AES-256-GCM for TINs, EINs, bank tokens. Sessions are HMAC-signed with a derived key. |
 | `EFILE_TRANSMITTER` | `mock` (sandbox provider, default) or `iris` (needs `IRIS_TCC` + credentials). |
-| `PLAID_CLIENT_ID` / `PLAID_SECRET` | Activates the real Plaid adapter (sandbox bank feed works without). |
+| `PLAID_CLIENT_ID` / `PLAID_SECRET` | Activates the real Plaid adapter (the built-in sandbox feed works without). |
+| `PLAID_ENV` | `sandbox` (default) or `production` — production only after Plaid approves your production access. |
+| `PLAID_WEBHOOK_URL` | Public HTTPS URL of `/api/plaid/webhook`. Without it, new transactions only arrive via "Sync now". |
 | `EMAIL_PROVIDER` | `console` (sandbox, default — logs and records the email, no network call) or `smtp` (needs `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM`). |
 
 ## Architecture notes
@@ -56,6 +58,15 @@ Tests: `npx vitest run` (81 tests; integration tests hit `DATABASE_URL`).
 - **Secrets**: TINs/EINs/bank tokens stored AES-256-GCM encrypted, displayed masked, never logged or put in audit payloads. API tokens stored as SHA-256 hashes.
 - **Auth & tenancy**: signed cookie sessions, multi-business per login with a switcher, roles (owner / accountant / employee / view-only) enforced in every mutating action, append-only audit log, period close locks the ledger.
 - **Developer API**: `GET /api/v1/{accounts,invoices,reports/trial-balance}`, `GET|POST /api/v1/webhooks` with `Authorization: Bearer wave_…`; webhook deliveries HMAC-signed (`X-Wave-Signature`).
+
+## Bank feeds (Plaid)
+
+- **Connect:** Banking → *Connect a bank* opens Plaid Link. The browser only gets a short-lived `link_token`; the returned `public_token` is exchanged server-side and the `access_token` is stored AES-256-GCM encrypted. Bank usernames/passwords never touch this app. `client_user_id` is our internal user id, never an email.
+- **Accounts:** checking/savings become new *Cash & Bank* ledger accounts (codes 1011+), credit cards new *Credit Card* liability accounts (2101+), one per bank account, remappable until something from that account is posted. Loans/investments are not imported yet.
+- **Sync:** `/transactions/sync` with a stored cursor; all pages are applied in one DB transaction and the cursor is saved only on commit. Pending transactions are skipped until they post. Bank-side *modified*/*removed* changes update or delete rows that aren't on the books yet; rows already posted are **flagged for review, never edited** (fix via reversal).
+- **Webhook:** `POST /api/plaid/webhook` verifies every call (ES256 `Plaid-Verification` JWT against `/webhook_verification_key/get`, 5-minute freshness, SHA-256 body hash) and 401s anything else. `SYNC_UPDATES_AVAILABLE` triggers a sync after the response; `ITEM_LOGIN_REQUIRED` / `PENDING_EXPIRATION` / `ERROR` mark the connection *needs reconnect* (Reconnect button = Link update mode); `LOGIN_REPAIRED` clears it.
+- **Disconnect:** `/item/remove`, then the connection is marked removed and its token wiped; imported history stays.
+- **Sandbox walkthrough:** with sandbox keys set, Connect a bank → pick any institution (e.g. *First Platypus Bank*) → `user_good` / `pass_good` → transactions appear (Plaid may take a few seconds to prepare history; press *Sync now* if no webhook URL is set).
 
 ## What is sandboxed vs production-ready
 
