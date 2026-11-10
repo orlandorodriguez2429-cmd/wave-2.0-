@@ -1,53 +1,177 @@
 'use server';
 
-import { cookies } from 'next/headers';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@/lib/db';
-import { authenticate, hashPassword, SESSION_COOKIE, signSession } from '@/lib/auth';
+import {
+  burnPasswordCheck,
+  endSession,
+  hashPassword,
+  readPendingMfa,
+  rotateSessions,
+  setPendingMfa,
+  startSession,
+  verifyPassword,
+} from '@/lib/auth';
 import { getCurrentContext, requireContext } from '@/lib/context';
 import { createBusiness } from '@/lib/ledger/business';
+import { confirmEnrollment, resetMfa, verifyLoginCode } from '@/lib/mfa';
+import { hit, isLocked, LIMITS, recordFailure, recordSuccess } from '@/lib/rate-limit';
+import { acceptInvite, createInvite, InviteError } from '@/lib/invites';
 import type { MembershipRole } from '@/generated/prisma/enums';
 import type { ActionResult } from './actions';
 
-async function setSessionCookie(userId: string, businessId: string) {
-  const store = await cookies();
-  store.set(SESSION_COOKIE, signSession({ userId, businessId }), {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/',
-    maxAge: 60 * 60 * 24 * 14,
-  });
+async function clientIp(): Promise<string> {
+  const h = await headers();
+  return (h.get('x-forwarded-for')?.split(',')[0] ?? h.get('x-real-ip') ?? 'unknown').trim();
 }
 
+const GENERIC_LOGIN_ERROR = 'Invalid email or password.';
+const TOO_MANY = 'Too many attempts. Wait 15 minutes and try again.';
+
+async function membershipFor(userId: string, preferBusinessId?: string) {
+  const memberships = await prisma.membership.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } });
+  return memberships.find((m) => m.businessId === preferBusinessId) ?? memberships[0] ?? null;
+}
+
+/** Step 1: password. A full session is only created after the MFA step. */
 export async function loginAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  const email = String(formData.get('email') ?? '');
+  const email = String(formData.get('email') ?? '').trim().toLowerCase();
   const password = String(formData.get('password') ?? '');
-  const user = await authenticate(email, password);
-  if (!user) return { error: 'Invalid email or password.' };
-  const membership = await prisma.membership.findFirst({
-    where: { userId: user.id },
-    orderBy: { createdAt: 'asc' },
+  const ip = await clientIp();
+  const ipOk = await hit(`login:ip:${ip}`, LIMITS.loginPerIp);
+  const emailOk = await hit(`login:email:${email}`, LIMITS.loginPerEmail);
+  if (!ipOk || !emailOk) return { error: TOO_MANY };
+
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user?.passwordHash) {
+    await burnPasswordCheck(password); // equalize timing
+    return { error: GENERIC_LOGIN_ERROR };
+  }
+  if (isLocked(user)) return { error: 'This account is temporarily locked after too many failed attempts. Try again in 15 minutes.' };
+  if (!(await verifyPassword(password, user.passwordHash))) {
+    await recordFailure(user.id);
+    return { error: GENERIC_LOGIN_ERROR };
+  }
+  if (!(await membershipFor(user.id))) return { error: 'This account has no access to any business.' };
+  await setPendingMfa({ userId: user.id, stage: user.mfaEnabledAt ? 'verify' : 'enroll' });
+  redirect('/login/mfa');
+}
+
+/** Step 2a: code from the authenticator app, or a backup code. */
+export async function verifyMfaAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  const pending = await readPendingMfa();
+  if (!pending || pending.stage !== 'verify') redirect('/login');
+  if (!(await hit(`mfa:user:${pending.userId}`, LIMITS.mfaPerUser))) return { error: TOO_MANY };
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: pending.userId } });
+  if (isLocked(user)) return { error: 'This account is temporarily locked. Try again in 15 minutes.' };
+  const how = await verifyLoginCode(user.id, String(formData.get('code') ?? ''));
+  if (!how) {
+    await recordFailure(user.id);
+    return { error: 'That code is not right. Use the current 6-digit code, or one of your backup codes.' };
+  }
+  await recordSuccess(user.id);
+  const m = await membershipFor(user.id, pending.businessId);
+  if (!m) redirect('/login');
+  await startSession({ userId: user.id, businessId: m.businessId, role: m.role, sv: user.sessionVersion });
+  await prisma.auditLog.create({
+    data: { businessId: m.businessId, userId: user.id, action: 'auth.login', entityType: 'user', entityId: user.id, payload: { mfa: how, ip: await clientIp() } },
   });
-  if (!membership) return { error: 'This account belongs to no business.' };
-  await setSessionCookie(user.id, membership.businessId);
-  redirect('/');
+  redirect(m.role === 'CLIENT' ? '/client' : '/');
+}
+
+/** Step 2b (first login): confirm the authenticator app; returns backup codes once. */
+export async function enrollMfaAction(
+  _prev: ActionResult & { backupCodes?: string[]; next?: string },
+  formData: FormData,
+): Promise<ActionResult & { backupCodes?: string[]; next?: string }> {
+  const pending = await readPendingMfa();
+  if (!pending || pending.stage !== 'enroll') redirect('/login');
+  if (!(await hit(`mfa:user:${pending.userId}`, LIMITS.mfaPerUser))) return { error: TOO_MANY };
+  const codes = await confirmEnrollment(pending.userId, String(formData.get('code') ?? ''));
+  if (!codes) {
+    await recordFailure(pending.userId);
+    return { error: 'That code is not right. Check the time on your phone and try the current code.' };
+  }
+  await recordSuccess(pending.userId);
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: pending.userId } });
+  const m = await membershipFor(user.id, pending.businessId);
+  if (!m) redirect('/login');
+  await startSession({ userId: user.id, businessId: m.businessId, role: m.role, sv: user.sessionVersion });
+  await prisma.auditLog.create({
+    data: { businessId: m.businessId, userId: user.id, action: 'auth.mfa_enrolled', entityType: 'user', entityId: user.id, payload: {} },
+  });
+  return { backupCodes: codes, next: m.role === 'CLIENT' ? '/client' : '/' };
 }
 
 export async function logoutAction(): Promise<void> {
-  const store = await cookies();
-  store.delete(SESSION_COOKIE);
+  await endSession();
   redirect('/login');
 }
 
 export async function switchBusinessAction(businessId: string): Promise<void> {
   const ctx = await getCurrentContext();
-  if (!ctx.memberships.some((m) => m.businessId === businessId)) {
-    throw new Error('You are not a member of that business.');
-  }
-  await setSessionCookie(ctx.user.id, businessId);
+  const m = ctx.memberships.find((x) => x.businessId === businessId);
+  if (!m) throw new Error('You are not a member of that business.');
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: ctx.user.id } });
+  // New session token for the new business/role (rotation on privilege change).
+  await startSession({ userId: ctx.user.id, businessId, role: m.role, sv: user.sessionVersion });
   redirect('/');
+}
+
+// --- Invites -----------------------------------------------------------------------
+
+export async function inviteClientAction(_prev: ActionResult & { message?: string }, formData: FormData): Promise<ActionResult & { message?: string }> {
+  const { user, business } = await requireContext('ACCOUNTANT');
+  if (!(await hit(`invite:business:${business.id}`, LIMITS.inviteSendPerBusiness))) return { error: TOO_MANY };
+  try {
+    const email = String(formData.get('email') ?? '');
+    await createInvite({ businessId: business.id, invitedById: user.id, email, role: 'CLIENT' });
+    revalidatePath('/settings/team');
+    return { message: `Invitation sent to ${email.trim().toLowerCase()}. The link works once and expires in 72 hours.` };
+  } catch (err) {
+    if (err instanceof InviteError) return { error: err.message };
+    throw err;
+  }
+}
+
+export async function revokeInviteAction(inviteId: string): Promise<void> {
+  const { user, business } = await requireContext('ACCOUNTANT');
+  const invite = await prisma.invite.findUniqueOrThrow({ where: { id: inviteId } });
+  if (invite.businessId !== business.id) throw new Error('Wrong business.');
+  await prisma.invite.update({ where: { id: invite.id }, data: { revokedAt: new Date() } });
+  await prisma.auditLog.create({
+    data: { businessId: business.id, userId: user.id, action: 'invite.revoked', entityType: 'invite', entityId: invite.id, payload: {} },
+  });
+  revalidatePath('/settings/team');
+}
+
+export async function acceptInviteAction(token: string, _prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  if (!(await hit(`invite:ip:${await clientIp()}`, LIMITS.invitePerIp))) return { error: TOO_MANY };
+  const password = String(formData.get('password') ?? '');
+  if (formData.has('confirm') && formData.get('confirm') !== password) return { error: 'The two passwords do not match.' };
+  let result;
+  try {
+    result = await acceptInvite({ token, name: String(formData.get('name') ?? ''), password });
+  } catch (err) {
+    if (err instanceof InviteError) return { error: err.message };
+    throw err;
+  }
+  await setPendingMfa({ userId: result.userId, stage: result.mfaEnabled ? 'verify' : 'enroll', businessId: result.businessId });
+  redirect('/login/mfa');
+}
+
+/** Owner resets a member's MFA (lost phone). Their sessions end; they re-enroll at next login. */
+export async function resetMemberMfaAction(membershipId: string): Promise<void> {
+  const { user, business } = await requireContext('OWNER');
+  const m = await prisma.membership.findUniqueOrThrow({ where: { id: membershipId } });
+  if (m.businessId !== business.id) throw new Error('Wrong business.');
+  await resetMfa(m.userId);
+  await prisma.auditLog.create({
+    data: { businessId: business.id, userId: user.id, action: 'auth.mfa_reset', entityType: 'user', entityId: m.userId, payload: {} },
+  });
+  revalidatePath('/settings/team');
 }
 
 export async function createBusinessAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
@@ -59,7 +183,8 @@ export async function createBusinessAction(_prev: ActionResult, formData: FormDa
     name,
     functionalCurrency: String(formData.get('currency') ?? 'USD'),
   });
-  await setSessionCookie(ctx.user.id, business.id);
+  const me = await prisma.user.findUniqueOrThrow({ where: { id: ctx.user.id } });
+  await startSession({ userId: ctx.user.id, businessId: business.id, role: 'OWNER', sv: me.sessionVersion });
   redirect('/');
 }
 
@@ -77,8 +202,8 @@ export async function addMemberAction(_prev: ActionResult, formData: FormData): 
 
   let member = await prisma.user.findUnique({ where: { email } });
   if (!member) {
-    if (tempPassword.length < 8) {
-      return { error: 'New user: set a temporary password of at least 8 characters.' };
+    if (tempPassword.length < 12) {
+      return { error: 'New user: set a temporary password of at least 12 characters (they will also set up two-step sign-in).' };
     }
     member = await prisma.user.create({
       data: { email, name: name || email.split('@')[0], passwordHash: await hashPassword(tempPassword) },
@@ -89,7 +214,11 @@ export async function addMemberAction(_prev: ActionResult, formData: FormData): 
   });
   if (existing) return { error: 'Already a member of this business.' };
 
+  if (member && (await prisma.membership.count({ where: { userId: member.id, role: 'CLIENT' } })) > 0) {
+    return { error: 'That email is a client login; client logins can only see their own business.' };
+  }
   await prisma.membership.create({ data: { userId: member.id, businessId: business.id, role } });
+  await rotateSessions(member.id); // privilege change → fresh sign-in
   await prisma.auditLog.create({
     data: {
       businessId: business.id,
@@ -110,6 +239,7 @@ export async function removeMemberAction(membershipId: string): Promise<void> {
   if (membership.businessId !== business.id) throw new Error('Wrong business.');
   if (membership.userId === user.id) throw new Error('You cannot remove yourself.');
   await prisma.membership.delete({ where: { id: membershipId } });
+  await rotateSessions(membership.userId); // their existing sessions end now
   await prisma.auditLog.create({
     data: {
       businessId: business.id,

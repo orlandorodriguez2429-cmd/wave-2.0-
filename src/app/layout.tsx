@@ -5,6 +5,7 @@ import { readSession } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { SessionBox } from '@/components/session-box';
 import { SidebarNav } from '@/components/sidebar-nav';
+import { ClientNav } from '@/components/client-nav';
 import './globals.css';
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
@@ -25,6 +26,17 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     : null;
   const active =
     user?.memberships.find((m) => m.businessId === session?.businessId) ?? user?.memberships[0];
+
+  if (active?.role === 'CLIENT' && user) {
+    return (
+      <html lang="en">
+        <body className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[var(--background)] text-slate-900`}>
+          <ClientNav businessName={active.business.name} userName={user.name} />
+          <main className="mx-auto max-w-5xl px-4 sm:px-8 py-8">{children}</main>
+        </body>
+      </html>
+    );
+  }
 
   return (
     <html lang="en">

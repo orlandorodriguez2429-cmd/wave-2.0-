@@ -30,7 +30,18 @@ model User {
   name         String
   // Null until interactive auth ships (later phase); never store plaintext.
   passwordHash String?
+  // TOTP MFA (required for every login). Secret AES-256-GCM encrypted.
+  mfaSecretEncrypted String?
+  mfaEnabledAt       DateTime?
+  // Last accepted TOTP time step, so a code can't be replayed.
+  mfaLastStep        Int?
+  // Lockout after repeated failures (password or MFA).
+  failedLoginCount   Int       @default(0)
+  lockedUntil        DateTime?
+  // Bumped on privilege/credential changes: every older session dies.
+  sessionVersion     Int       @default(1)
   createdAt    DateTime     @default(now())
+  mfaBackupCodes MfaBackupCode[]
   memberships  Membership[]
   journalEntries JournalEntry[]
   auditLogs    AuditLog[]
@@ -43,6 +54,9 @@ enum MembershipRole {
   ACCOUNTANT
   EMPLOYEE
   CONTRACTOR_VIEW
+  // A business's own client: read-only portal for exactly one business
+  // (plus connecting their own bank). Never sees staff pages.
+  CLIENT
 
   @@map("membership_role")
 }
@@ -1354,4 +1368,58 @@ model Timesheet {
 
   @@index([businessId, employeeId, weekStart])
   @@map("timesheets")
+}
+
+// One-time MFA backup codes, stored only as SHA-256 hashes.
+model MfaBackupCode {
+  id       String    @id @default(cuid())
+  userId   String
+  codeHash String
+  usedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("mfa_backup_codes")
+}
+
+// Single-use invitation link. Only a SHA-256 hash of the token is stored;
+// expires 72 hours after it's sent.
+model Invite {
+  id          String         @id @default(cuid())
+  businessId  String
+  email       String
+  role        MembershipRole
+  tokenHash   String         @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  revokedAt   DateTime?
+  createdById String
+  createdAt   DateTime       @default(now())
+
+  @@index([businessId, createdAt])
+  @@map("invites")
+}
+
+// Fixed-window rate limit counters (login, MFA, invites), keyed e.g.
+// "login:ip:203.0.113.5" or "mfa:user:<id>".
+model RateLimitBucket {
+  key         String   @id
+  windowStart DateTime
+  count       Int
+
+  @@map("rate_limit_buckets")
+}
+
+// Kept after a business is deleted (data retention): what was removed, when, by whom.
+model DeletionRecord {
+  id           String   @id @default(cuid())
+  businessId   String
+  businessName String
+  deletedById  String
+  plaidItemsRemoved Int
+  summary      Json
+  createdAt    DateTime @default(now())
+
+  @@map("deletion_records")
 }

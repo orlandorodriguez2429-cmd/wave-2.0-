@@ -8,16 +8,29 @@ import { useCallback, useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePlaidLink } from 'react-plaid-link';
 import { createLinkTokenAction, exchangePublicTokenAction, markReconnectedAction } from '@/app/banking-actions';
+import {
+  clientCreateLinkTokenAction,
+  clientExchangePublicTokenAction,
+  clientMarkReconnectedAction,
+} from '@/app/client-actions';
+
+const ACTIONS = {
+  staff: { create: createLinkTokenAction, exchange: exchangePublicTokenAction, reconnected: markReconnectedAction },
+  client: { create: clientCreateLinkTokenAction, exchange: clientExchangePublicTokenAction, reconnected: clientMarkReconnectedAction },
+};
 
 export function PlaidLinkButton({
   reconnectConnectionId,
   label,
   variant = 'primary',
+  audience = 'staff',
 }: {
   reconnectConnectionId?: string;
   label: string;
   variant?: 'primary' | 'secondary';
+  audience?: 'staff' | 'client';
 }) {
+  const actions = ACTIONS[audience];
   const router = useRouter();
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -29,16 +42,16 @@ export function PlaidLinkButton({
       setLinkToken(null);
       startTransition(async () => {
         const res = reconnectConnectionId
-          ? await markReconnectedAction(reconnectConnectionId)
+          ? await actions.reconnected(reconnectConnectionId)
           : publicToken
-            ? await exchangePublicTokenAction(publicToken)
+            ? await actions.exchange(publicToken)
             : { error: 'Plaid did not return a connection.' };
         if (res.error) setError(res.error);
         else setMessage(reconnectConnectionId ? 'Bank reconnected.' : 'Bank connected. Transactions are loading.');
         router.refresh();
       });
     },
-    [reconnectConnectionId, router],
+    [reconnectConnectionId, router, actions],
   );
 
   const { open, ready } = usePlaidLink({
@@ -60,7 +73,7 @@ export function PlaidLinkButton({
     setError(null);
     setMessage(null);
     startTransition(async () => {
-      const res = await createLinkTokenAction(reconnectConnectionId);
+      const res = await actions.create(reconnectConnectionId);
       if (res.error || !res.linkToken) setError(res.error ?? 'Could not start Plaid Link.');
       else setLinkToken(res.linkToken);
     });

@@ -36,16 +36,26 @@ export class ConsoleEmailProvider implements EmailProvider {
 export class SmtpEmailProvider implements EmailProvider {
   readonly name = 'smtp';
 
-  async send(): Promise<never> {
-    if (!process.env.SMTP_HOST || !process.env.SMTP_FROM) {
+  async send(email: OutboundEmail): Promise<SendResult> {
+    const host = process.env.SMTP_HOST;
+    const from = process.env.SMTP_FROM;
+    if (!host || !from) {
       throw new Error(
         'Real email delivery is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, ' +
           'and SMTP_FROM, or use EMAIL_PROVIDER=console (the sandbox default) until then.',
       );
     }
-    // Real implementation: hand off to nodemailer (or the org's transactional
-    // email API of choice) using the SMTP_* env vars above.
-    throw new Error('SMTP delivery is configured but not yet implemented.');
+    const { createTransport } = await import('nodemailer');
+    const port = Number(process.env.SMTP_PORT ?? 587);
+    const transport = createTransport({
+      host,
+      port,
+      secure: port === 465, // 587 upgrades with STARTTLS
+      requireTLS: port !== 465,
+      auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS ?? '' } : undefined,
+    });
+    const info = await transport.sendMail({ from, to: email.to, subject: email.subject, text: email.text });
+    return { providerMessageId: String(info.messageId ?? `smtp-${Date.now()}`) };
   }
 }
 

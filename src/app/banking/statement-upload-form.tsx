@@ -2,9 +2,16 @@
 
 import { useActionState, useState } from 'react';
 import { uploadStatementAction } from '@/app/banking-actions';
+import { clientUploadStatementAction } from '@/app/client-actions';
 
-export function StatementUploadForm({ accounts }: { accounts: Array<{ value: string; label: string }> }) {
-  const [state, formAction, pending] = useActionState(uploadStatementAction, {});
+export function StatementUploadForm({
+  accounts,
+  audience = 'staff',
+}: {
+  accounts: Array<{ value: string; label: string }>;
+  audience?: 'staff' | 'client';
+}) {
+  const [state, formAction, pending] = useActionState(audience === 'client' ? clientUploadStatementAction : uploadStatementAction, {});
   const [target, setTarget] = useState(accounts[0]?.value ?? 'new');
   const input = 'rounded-md border border-slate-300 px-2.5 py-1.5 text-sm bg-white';
   return (

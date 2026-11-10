@@ -2,15 +2,15 @@ import { getCurrentContext } from '@/lib/context';
 import { prisma } from '@/lib/db';
 import { SimpleRecordForm } from '@/components/simple-record-form';
 import { ActionButton } from '@/components/action-button';
-import { addMemberAction, removeMemberAction } from '@/app/auth-actions';
+import { addMemberAction, removeMemberAction, resetMemberMfaAction, revokeInviteAction } from '@/app/auth-actions';
 import { revokeApiTokenAction } from '@/app/team-actions';
-import { NewBusinessForm, TokenForm } from './team-forms';
+import { NewBusinessForm, TokenForm, InviteClientForm } from './team-forms';
 
 export const dynamic = 'force-dynamic';
 
 export default async function TeamPage() {
   const { business, user, role } = await getCurrentContext();
-  const [members, tokens, webhooks] = await Promise.all([
+  const [members, tokens, webhooks, invites] = await Promise.all([
     prisma.membership.findMany({
       where: { businessId: business.id },
       include: { user: true },
@@ -18,7 +18,12 @@ export default async function TeamPage() {
     }),
     prisma.apiToken.findMany({ where: { businessId: business.id }, orderBy: { createdAt: 'desc' } }),
     prisma.webhookSubscription.findMany({ where: { businessId: business.id } }),
+    prisma.invite.findMany({
+      where: { businessId: business.id, usedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    }),
   ]);
+  const canInvite = role === 'OWNER' || role === 'ACCOUNTANT';
   const isOwner = role === 'OWNER';
 
   return (
@@ -42,7 +47,13 @@ export default async function TeamPage() {
                       {m.role.toLowerCase().replace('_', ' ')}
                     </span>
                   </td>
-                  <td className="px-5 py-2.5 text-right">
+                  <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">
+                    {m.user.mfaEnabledAt ? '2-step on' : <span className="text-amber-700">2-step not set up</span>}
+                  </td>
+                  <td className="px-5 py-2.5 text-right whitespace-nowrap space-x-2">
+                    {isOwner && m.userId !== user.id && m.user.mfaEnabledAt && (
+                      <ActionButton action={resetMemberMfaAction.bind(null, m.id)} label="Reset 2-step" confirmLabel="Reset (lost phone)" />
+                    )}
                     {isOwner && m.userId !== user.id && (
                       <ActionButton action={removeMemberAction.bind(null, m.id)} label="Remove" confirmLabel="Confirm" />
                     )}
@@ -76,9 +87,31 @@ export default async function TeamPage() {
         )}
         <p className="text-xs text-slate-400">
           Roles: owner (everything) · accountant (all bookkeeping incl. 1099 filing) · employee (drafts and
-          expenses only, cannot post to the ledger) · view only.
+          expenses only, cannot post to the ledger) · view only · client (portal only, invited below). Everyone signs
+          in with two-step verification.
         </p>
       </section>
+
+      {canInvite && (
+        <section className="space-y-3">
+          <h2 className="font-medium">Client portal</h2>
+          <p className="text-sm text-slate-500">
+            Invite the business owner to a read-only portal: dashboard, months, Profit &amp; Loss, transactions, and connecting
+            their own bank. They only ever see {business.name}.
+          </p>
+          <InviteClientForm />
+          {invites.length > 0 && (
+            <ul className="rounded-lg border border-slate-200 bg-white divide-y divide-slate-50 text-sm">
+              {invites.map((i) => (
+                <li key={i.id} className="flex items-center justify-between px-5 py-2.5">
+                  <span>{i.email} <span className="text-slate-400">· invited, expires {i.expiresAt.toISOString().slice(0, 16).replace('T', ' ')} UTC</span></span>
+                  <ActionButton action={revokeInviteAction.bind(null, i.id)} label="Cancel invite" />
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       <section className="space-y-3">
         <h2 className="font-medium">Another business?</h2>

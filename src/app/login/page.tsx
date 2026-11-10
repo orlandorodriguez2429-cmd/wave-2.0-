@@ -5,7 +5,8 @@ import { LoginForm } from './login-form';
 export const dynamic = 'force-dynamic';
 
 export default async function LoginPage() {
-  if (await readSession()) redirect('/');
+  const session = await readSession();
+  if (session) redirect(session.role === 'CLIENT' ? '/client' : '/');
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-slate-100">
       <div className="w-full max-w-sm space-y-6 rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
@@ -14,8 +15,9 @@ export default async function LoginPage() {
           <p className="text-sm text-slate-500 mt-1">Sign in to your books.</p>
         </div>
         <LoginForm />
+        <p className="text-xs text-slate-400">Two-step verification is required for every account.</p>
         <p className="text-xs text-slate-400">
-          Demo login: <code>demo@wave2.local</code> / <code>demo-password-123</code>
+          <a href="/privacy" className="hover:underline">Privacy</a> · <a href="/terms" className="hover:underline">Terms</a>
         </p>
       </div>
     </div>
