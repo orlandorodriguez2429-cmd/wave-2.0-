@@ -3,6 +3,7 @@ import { getCurrentContext } from '@/lib/context';
 import { prisma } from '@/lib/db';
 import { profitAndLoss } from '@/lib/ledger/reports';
 import { vendor1099Totals } from '@/lib/forms1099/tracking';
+import { monthStatuses } from '@/lib/months';
 import { formatMoney } from '@/lib/money';
 
 export const dynamic = 'force-dynamic';
@@ -32,7 +33,7 @@ export default async function Dashboard() {
   const thisMonth = months[months.length - 1];
   const taxYear = new Date().getUTCFullYear();
 
-  const [ytd, monthlyPnl, connections, toReviewByMonth, flaggedCount, closes, totals1099] = await Promise.all([
+  const [ytd, monthlyPnl, connections, totalToReview, flaggedCount, totals1099] = await Promise.all([
     profitAndLoss(business.id, { from: fyStart, to: new Date() }),
     Promise.all(months.map((m) => profitAndLoss(business.id, { from: m.from, to: m.to }))),
     prisma.bankConnection.findMany({
@@ -40,17 +41,8 @@ export default async function Dashboard() {
       include: { _count: { select: { accounts: true } } },
       orderBy: { createdAt: 'asc' },
     }),
-    Promise.all(
-      months.map((m) =>
-        prisma.importedTransaction.groupBy({
-          by: ['status'],
-          where: { businessId: business.id, date: { gte: m.from, lte: m.to } },
-          _count: { _all: true },
-        }),
-      ),
-    ),
+    prisma.importedTransaction.count({ where: { businessId: business.id, status: 'PENDING' } }),
     prisma.importedTransaction.count({ where: { businessId: business.id, needsReview: true } }),
-    prisma.periodClose.findMany({ where: { businessId: business.id, status: 'CLOSED' }, select: { periodEnd: true } }),
     vendor1099Totals(business.id, taxYear),
   ]);
 
@@ -67,30 +59,24 @@ export default async function Dashboard() {
   const abs = (n: bigint) => (n < 0n ? -n : n);
   const maxAbs = trend.reduce((m, t) => (abs(t.netIncome) > m ? abs(t.netIncome) : m), 1n);
 
-  // Month-to-month status, newest first. (Phase B turns this into the full
-  // per-month checklist with close/reopen rules.)
+  // Month-to-month status, newest first (same logic as the Months page).
   const closedThrough = business.booksClosedThrough;
-  const closedEnds = new Set(closes.map((c) => c.periodEnd.toISOString().slice(0, 10)));
-  const monthRows = months
-    .map((m, i) => {
-      const counts = Object.fromEntries(toReviewByMonth[i].map((g) => [g.status, g._count._all]));
-      const total = Object.values(counts).reduce((s: number, n) => s + (n as number), 0);
-      const pending = counts.PENDING ?? 0;
-      const isCurrent = i === months.length - 1;
-      const closed = (closedThrough && m.to <= closedThrough) || closedEnds.has(m.to.toISOString().slice(0, 10));
-      const status = closed
-        ? { label: 'Closed', cls: 'bg-green-100 text-green-700' }
-        : pending > 0
-          ? { label: `${pending} to review`, cls: 'bg-amber-100 text-amber-800' }
-          : total === 0
-            ? { label: connections.length ? 'No bank data' : 'Bank not connected', cls: 'bg-slate-100 text-slate-500' }
-            : isCurrent
-              ? { label: 'In progress', cls: 'bg-teal-50 text-teal-700' }
-              : { label: 'Ready to close', cls: 'bg-teal-100 text-teal-800' };
-      return { label: m.from.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }), status, net: monthlyPnl[i].netIncome };
-    })
-    .reverse();
-  const totalToReview = toReviewByMonth.flat().filter((g) => g.status === 'PENDING').reduce((s, g) => s + g._count._all, 0);
+  const STATUS: Record<string, { label: (n: number) => string; cls: string }> = {
+    CLOSED: { label: () => 'Closed', cls: 'bg-green-100 text-green-700' },
+    READY: { label: () => 'Ready to close', cls: 'bg-teal-100 text-teal-800' },
+    NEEDS_REVIEW: { label: (n) => `${n} to review`, cls: 'bg-amber-100 text-amber-800' },
+    NO_DATA: { label: () => 'No bank data', cls: 'bg-slate-100 text-slate-500' },
+    NOT_CONNECTED: { label: () => 'Bank not connected', cls: 'bg-slate-100 text-slate-500' },
+    IN_PROGRESS: { label: () => 'In progress', cls: 'bg-sky-50 text-sky-700' },
+  };
+  const statuses = (await monthStatuses(business.id)).slice(-6).reverse();
+  const monthRows = await Promise.all(
+    statuses.map(async (m) => ({
+      label: m.label,
+      status: { label: STATUS[m.status].label(m.toReview + m.flagged), cls: STATUS[m.status].cls },
+      net: (await profitAndLoss(business.id, { from: m.start, to: m.end })).netIncome,
+    })),
+  );
 
   const reportable = totals1099.filter((t) => t.status === 'REPORTABLE');
   const approaching = totals1099.filter((t) => t.status === 'APPROACHING');

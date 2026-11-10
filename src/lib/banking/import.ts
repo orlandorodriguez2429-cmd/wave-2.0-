@@ -108,7 +108,7 @@ export async function connectPlaidItem(opts: { businessId: string; userId: strin
 }
 
 /** New ledger account for a bank feed, with the next free code in its range. */
-async function createFeedLedgerAccount(
+export async function createFeedLedgerAccount(
   tx: Prisma.TransactionClient,
   businessId: string,
   functionalCurrency: string,

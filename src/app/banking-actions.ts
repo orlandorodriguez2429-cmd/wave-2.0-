@@ -16,7 +16,9 @@ import {
 import { createLinkToken } from '@/lib/banking/plaid';
 import { isPlaidConfigured } from '@/lib/banking/plaid-client';
 import { decryptSecret } from '@/lib/crypto';
-import { categorizeTransaction, excludeTransaction, matchTransaction } from '@/lib/banking/categorize';
+import { importStatement } from '@/lib/banking/statement';
+import { categorizeTransaction, excludeTransaction, matchTransaction, recategorizeTransaction } from '@/lib/banking/categorize';
+import { ensureTemplateAccount } from '@/lib/ledger/accounts';
 import { completeReconciliation } from '@/lib/banking/reconcile';
 import { parseAmount } from '@/lib/money';
 import type { ActionResult } from './actions';
@@ -155,13 +157,32 @@ export async function clearReviewFlagAction(transactionId: string): Promise<void
 export async function categorizeTxnAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const { user, business } = await requireContext('ACCOUNTANT');
   try {
+    const transactionId = String(formData.get('transactionId') ?? '');
+    const categoryAccountId = String(formData.get('categoryAccountId') ?? '');
+    const interestRaw = String(formData.get('interest') ?? '').trim();
+    let splits: Array<{ accountId: string; amount: bigint }> | undefined;
+    if (interestRaw) {
+      // Loan payment: principal to the loan account, interest to Interest Expense.
+      const txn = await prisma.importedTransaction.findUniqueOrThrow({ where: { id: transactionId }, include: { bankAccountLink: true } });
+      const total = txn.amount < 0n ? -txn.amount : txn.amount;
+      const interest = parseAmount(interestRaw, txn.bankAccountLink.currency);
+      if (interest <= 0n || interest > total) return { error: 'Interest must be more than 0 and no more than the payment.' };
+      const interestAccount = await ensureTemplateAccount(prisma, business.id, '7100');
+      splits = [
+        { accountId: categoryAccountId, amount: total - interest },
+        { accountId: interestAccount.id, amount: interest },
+      ];
+    }
     await categorizeTransaction({
       businessId: business.id,
       userId: user.id,
-      transactionId: String(formData.get('transactionId') ?? ''),
-      categoryAccountId: String(formData.get('categoryAccountId') ?? ''),
+      transactionId,
+      categoryAccountId,
+      splits,
+      rememberPayee: formData.get('remember') === 'on',
     });
     revalidatePath('/banking');
+    revalidatePath('/close');
     return {};
   } catch (err) {
     return errorResult(err);
@@ -274,4 +295,50 @@ export async function completeReconciliationAction(sessionId: string): Promise<v
   await completeReconciliation({ businessId: business.id, userId: user.id, sessionId });
   revalidatePath(`/banking/reconcile/${sessionId}`);
   revalidatePath('/banking/reconcile');
+}
+
+/** Undo a categorization (reversal entry) and send the row back to review. */
+export async function recategorizeTxnAction(transactionId: string): Promise<void> {
+  const { user, business } = await requireContext('ACCOUNTANT');
+  await recategorizeTransaction({ businessId: business.id, userId: user.id, transactionId });
+  revalidatePath('/banking');
+  revalidatePath('/close');
+}
+
+const MAX_STATEMENT_BYTES = 2 * 1024 * 1024;
+
+export async function uploadStatementAction(_prev: ActionResult & { message?: string }, formData: FormData): Promise<ActionResult & { message?: string }> {
+  const { user, business } = await requireContext('ACCOUNTANT');
+  try {
+    const file = formData.get('file');
+    if (!(file instanceof File) || file.size === 0) return { error: 'Choose the statement CSV file.' };
+    if (file.size > MAX_STATEMENT_BYTES) return { error: 'That file is larger than 2 MB.' };
+    if (!/\.csv$/i.test(file.name) && file.type !== 'text/csv') {
+      return { error: 'Upload the statement as CSV (most banks offer "Download as CSV"). PDF statements are not read automatically yet.' };
+    }
+    const target = String(formData.get('linkId') ?? '');
+    const r = await importStatement({
+      businessId: business.id,
+      userId: user.id,
+      fileName: file.name,
+      csvText: await file.text(),
+      openingBalance: String(formData.get('opening') ?? ''),
+      closingBalance: String(formData.get('closing') ?? ''),
+      positiveIsMoneyOut: formData.get('positiveIsMoneyOut') === 'on',
+      ...(target && target !== 'new'
+        ? { linkId: target }
+        : {
+            newAccount: {
+              name: String(formData.get('newName') ?? ''),
+              kind: formData.get('newKind') === 'credit' ? ('credit' as const) : ('depository' as const),
+            },
+          }),
+    });
+    revalidatePath('/banking');
+    revalidatePath('/close');
+    const sorted = r.auto ? r.auto.transfers * 2 + r.auto.rule + r.auto.merchant + r.auto.ai : 0;
+    return { message: `Balance check passed. Imported ${r.imported} new transaction(s)${r.duplicates ? `, skipped ${r.duplicates} already on file` : ''}; ${sorted} sorted automatically.` };
+  } catch (err) {
+    return errorResult(err);
+  }
 }

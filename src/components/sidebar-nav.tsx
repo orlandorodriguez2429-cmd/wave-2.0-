@@ -50,6 +50,7 @@ export function SidebarNav() {
       <Section title="1099s" icon="tax" open={!!open.f1099} onToggle={() => toggle('f1099')} links={form1099Links} pathname={pathname} />
 
       <p className="px-3 pt-4 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Accountant</p>
+      <TopLink href="/firm" label="All clients" icon="advisors" active={pathname === '/firm'} />
       <Section title="Books" icon="purchases" open={open.books} onToggle={() => toggle('books')} links={booksLinks} pathname={pathname} />
       <TopLink href="/settings/team" label="Team" small active={pathname === '/settings/team'} />
     </nav>

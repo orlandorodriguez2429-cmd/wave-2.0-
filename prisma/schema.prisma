@@ -106,6 +106,13 @@ model Business {
   // Phase 6 — period close lock: the engine refuses postings dated on or
   // before this date. Set by closing a period; cleared only by reopening.
   booksClosedThrough DateTime? @db.Date
+  // Month-to-month cycle: first month this office keeps the books for.
+  // Months before it don't appear in the checklist.
+  booksStartDate     DateTime? @db.Date
+  // Short plain description ("residential cleaning", "consulting") — the
+  // only business detail ever sent to the AI categorizer.
+  businessType       String?
+  statementUploads   StatementUpload[]
   periodCloses         PeriodClose[]
   apiTokens            ApiToken[]
   webhookSubscriptions WebhookSubscription[]
@@ -920,6 +927,17 @@ model ImportedTransaction {
   // The bank changed or removed this transaction after it was already on the
   // books. The ledger is never edited by a sync: an accountant reviews and,
   // if needed, reverses. reviewReason: PROVIDER_MODIFIED | PROVIDER_REMOVED.
+  // How the category was decided: USER | RULE | MERCHANT | AI | TRANSFER.
+  // Null while still pending.
+  categorizedBy     String?
+  // AI guess details (also kept for below-threshold guesses left for review).
+  aiConfidence      Float?
+  aiReason          String?
+  // Set once the automatic pipeline has looked at this row, so a row the
+  // AI was unsure about isn't re-sent on every sync.
+  autoProcessedAt   DateTime?
+  // Rows that came from a statement upload instead of a live feed.
+  statementUploadId String?
   needsReview       Boolean           @default(false)
   reviewReason      String?
   // What the provider now says: { date, description, amount } (amount as a
@@ -952,6 +970,27 @@ enum RuleDirection {
   @@map("rule_direction")
 }
 
+model StatementUpload {
+  id                String   @id @default(cuid())
+  businessId        String
+  bankAccountLinkId String
+  fileName          String
+  periodStart       DateTime @db.Date
+  periodEnd         DateTime @db.Date
+  // Balance check: opening + sum(rows) must equal closing.
+  openingBalance    BigInt
+  closingBalance    BigInt
+  rowCount          Int
+  importedCount     Int
+  createdById       String
+  createdAt         DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, createdAt])
+  @@map("statement_uploads")
+}
+
 model CategorizationRule {
   id         String        @id @default(cuid())
   businessId String
@@ -961,6 +1000,8 @@ model CategorizationRule {
   accountId  String
   // Lower number wins when several rules match.
   priority   Int           @default(100)
+  // USER (typed on the Rules page) or LEARNED ("remember for this payee").
+  source     String        @default("USER")
   createdAt  DateTime      @default(now())
 
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)

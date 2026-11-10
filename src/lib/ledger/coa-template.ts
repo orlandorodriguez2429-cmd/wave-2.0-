@@ -63,4 +63,6 @@ export const STANDARD_COA: CoaTemplateAccount[] = [
   { code: '6900', name: 'Contractor Payments', type: 'EXPENSE', subtype: 'contractor',
     description: 'Payments to 1099-eligible contractors (feeds 1099 reporting in Phase 4).' },
   { code: '6950', name: 'Miscellaneous Expense', type: 'EXPENSE', subtype: 'operating_expense' },
+  { code: '7100', name: 'Interest Expense', type: 'EXPENSE', subtype: 'interest_expense',
+    description: 'Interest part of loan payments (the principal reduces Loans Payable).' },
 ];

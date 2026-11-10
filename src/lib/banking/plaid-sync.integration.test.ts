@@ -104,7 +104,7 @@ describe('connect', () => {
 describe('sync', () => {
   it('pages through the initial sync and saves the final cursor', async () => {
     const provider = new FixtureProvider({ '': FIXTURES.page1, 'cursor-1a': FIXTURES.page2 });
-    const r = await syncConnection({ connectionId, businessId, userId, provider });
+    const r = await syncConnection({ autoCategorize: false, connectionId, businessId, userId, provider });
     expect(provider.calls).toEqual([null, 'cursor-1a']);
     expect(r).toMatchObject({ added: 6, skippedPending: 1, skippedUnknownAccount: 1 });
     const c = await prisma.bankConnection.findUniqueOrThrow({ where: { id: connectionId } });
@@ -116,7 +116,7 @@ describe('sync', () => {
 
   it('is idempotent: re-running from the saved cursor imports nothing', async () => {
     const provider = new FixtureProvider({ '': FIXTURES.page1, 'cursor-1a': FIXTURES.page2 });
-    const r = await syncConnection({ connectionId, businessId, userId, provider });
+    const r = await syncConnection({ autoCategorize: false, connectionId, businessId, userId, provider });
     expect(provider.calls).toEqual(['cursor-1b']);
     expect(r.added).toBe(0);
     expect(await prisma.importedTransaction.count({ where: { businessId } })).toBe(6);
@@ -138,6 +138,7 @@ describe('sync', () => {
     tectraEntryLines = await prisma.journalLine.findMany({ where: { entryId: tectraBefore.journalEntryId! } });
 
     const r = await syncConnection({
+      autoCategorize: false,
       connectionId,
       businessId,
       userId: null,
@@ -191,7 +192,7 @@ describe('sync', () => {
         return { added: [], modified: [], removed: [], nextCursor: 'cursor-3', hasMore: false };
       },
     };
-    await syncConnection({ connectionId, businessId, userId, provider });
+    await syncConnection({ autoCategorize: false, connectionId, businessId, userId, provider });
     expect(provider.calls).toEqual(['cursor-2', 'cursor-2']);
     expect((await prisma.bankConnection.findUniqueOrThrow({ where: { id: connectionId } })).cursor).toBe('cursor-3');
   });
@@ -202,7 +203,7 @@ describe('sync', () => {
         throw new PlaidRequestError('transactions sync', 'ITEM_LOGIN_REQUIRED');
       },
     });
-    await expect(syncConnection({ connectionId, businessId, userId: null, trigger: 'cron', provider })).rejects.toThrow(
+    await expect(syncConnection({ autoCategorize: false, connectionId, businessId, userId: null, trigger: 'cron', provider })).rejects.toThrow(
       'ITEM_LOGIN_REQUIRED',
     );
     const c = await prisma.bankConnection.findUniqueOrThrow({ where: { id: connectionId } });
@@ -214,7 +215,7 @@ describe('sync', () => {
   });
 
   it('a successful sync does not clear NEEDS_RECONNECT; reconnecting does', async () => {
-    await syncConnection({ connectionId, businessId, userId, provider: new FixtureProvider({}) });
+    await syncConnection({ autoCategorize: false, connectionId, businessId, userId, provider: new FixtureProvider({}) });
     expect((await prisma.bankConnection.findUniqueOrThrow({ where: { id: connectionId } })).status).toBe('NEEDS_RECONNECT');
     await markReconnected({ businessId, userId, connectionId });
     const c = await prisma.bankConnection.findUniqueOrThrow({ where: { id: connectionId } });
@@ -287,7 +288,7 @@ describe('review, remap, disconnect', () => {
     expect(c.accessTokenEncrypted).toBeNull();
     expect(c.removedAt).not.toBeNull();
     expect(await prisma.importedTransaction.count({ where: { businessId } })).toBe(before);
-    await expect(syncConnection({ connectionId, businessId, userId, provider: new FixtureProvider({}) })).rejects.toThrow(
+    await expect(syncConnection({ autoCategorize: false, connectionId, businessId, userId, provider: new FixtureProvider({}) })).rejects.toThrow(
       /disconnected/,
     );
     // Webhooks for a removed item are ignored.
@@ -296,7 +297,7 @@ describe('review, remap, disconnect', () => {
 
   it('refuses to act on another business’s connection', async () => {
     const other = await createBusiness({ userId, name: 'Other Co' });
-    await expect(syncConnection({ connectionId, businessId: other.id, userId })).rejects.toThrow(/Wrong business/);
+    await expect(syncConnection({ autoCategorize: false, connectionId, businessId: other.id, userId })).rejects.toThrow(/Wrong business/);
     await expect(disconnectConnection({ businessId: other.id, userId, connectionId })).rejects.toThrow(/Wrong business/);
   });
 });

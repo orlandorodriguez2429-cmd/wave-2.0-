@@ -11,9 +11,18 @@ import { PlaidProvider } from './plaid';
 import { PlaidRequestError, RECONNECT_ERROR_CODES } from './plaid-client';
 import { planSync, rowKey, type ExistingRow, type SyncStats } from './sync-plan';
 import { suggestAccount } from './suggest';
+import { autoCategorize, type AutoStats } from './autocat';
+import type { Classifier } from './ai-categorize';
+
+/** Statement-upload accounts have no live feed: syncing them is a no-op. */
+const NO_FEED: BankFeedProvider = {
+  name: 'upload',
+  syncPage: async (_token, cursor) => ({ added: [], modified: [], removed: [], nextCursor: cursor ?? '', hasMore: false }),
+};
 
 export function getProvider(name: string): BankFeedProvider {
   if (name === 'plaid') return new PlaidProvider();
+  if (name === 'upload') return NO_FEED;
   return new MockBankProvider();
 }
 
@@ -22,6 +31,7 @@ export type SyncTrigger = 'manual' | 'connect' | 'webhook' | 'cron';
 export interface SyncResult extends SyncStats {
   /** Kept for callers that only care how many rows arrived. */
   imported: number;
+  auto?: AutoStats;
 }
 
 const MAX_ATTEMPTS = 3;
@@ -38,6 +48,10 @@ export async function syncConnection(opts: {
   trigger?: SyncTrigger;
   /** Test seam: override the provider. */
   provider?: BankFeedProvider;
+  /** Run rules/merchant/AI categorization after importing (default true). */
+  autoCategorize?: boolean;
+  /** Test seam / opt-out for the AI step (undefined = use ANTHROPIC_API_KEY if set). */
+  classifier?: Classifier | null;
 }): Promise<SyncResult> {
   const trigger = opts.trigger ?? 'manual';
   const initial = await prisma.bankConnection.findUniqueOrThrow({
@@ -210,7 +224,16 @@ export async function syncConnection(opts: {
       throw err;
     }
 
-    return { ...plan.stats, flagged: plan.flags.length, imported: plan.stats.added };
+    const result: SyncResult = { ...plan.stats, flagged: plan.flags.length, imported: plan.stats.added };
+    if (opts.autoCategorize !== false) {
+      try {
+        result.auto = await autoCategorize({ businessId: initial.businessId, classifier: opts.classifier });
+      } catch (err) {
+        // Import already committed; categorization can run again later.
+        console.warn(`[sync] auto-categorize failed: ${err instanceof Error ? err.message : 'unknown'}`);
+      }
+    }
+    return result;
   }
 }
 

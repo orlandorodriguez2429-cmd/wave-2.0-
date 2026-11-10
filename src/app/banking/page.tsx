@@ -8,6 +8,7 @@ import { SimpleRecordForm } from '@/components/simple-record-form';
 import {
   clearReviewFlagAction,
   connectSandboxBankAction,
+  recategorizeTxnAction,
   disconnectConnectionAction,
   remapAccountLinkAction,
   syncConnectionAction,
@@ -15,6 +16,7 @@ import {
 import { isPlaidConfigured, plaidConfig } from '@/lib/banking/plaid-client';
 import { TxnRow, type Candidate } from './txn-row';
 import { PlaidLinkButton } from './plaid-link-button';
+import { StatementUploadForm } from './statement-upload-form';
 
 const CONNECTION_STATUS: Record<string, { label: string; cls: string }> = {
   ACTIVE: { label: 'connected', cls: 'bg-green-100 text-green-700' },
@@ -66,6 +68,17 @@ export default async function BankingPage() {
     include: { bankAccountLink: true },
   });
   const pending = transactions.filter((t) => t.status === 'PENDING');
+  const entryIds = transactions.map((t) => t.journalEntryId).filter((x): x is string => !!x);
+  const entryLines = entryIds.length
+    ? await prisma.journalLine.findMany({ where: { entryId: { in: entryIds } }, include: { account: true } })
+    : [];
+  const linkLedger = new Map(transactions.map((t) => [t.journalEntryId ?? '', t.bankAccountLink.ledgerAccountId]));
+  const entryCategory = new Map<string, string>();
+  for (const l of entryLines) {
+    if (l.accountId === linkLedger.get(l.entryId)) continue;
+    const prev = entryCategory.get(l.entryId);
+    entryCategory.set(l.entryId, prev ? `${prev} + ${l.account.name}` : `${l.account.code} · ${l.account.name}`);
+  }
   const resolved = transactions.filter((t) => t.status !== 'PENDING');
 
   // Match candidates per pending txn (top 3 each).
@@ -81,6 +94,7 @@ export default async function BankingPage() {
     );
   }
 
+  const loanAccountIds = categoryAccounts.filter((a) => a.subtype === 'long_term_liability').map((a) => a.id);
   const accountName = new Map(categoryAccounts.map((a) => [a.id, `${a.code} · ${a.name}`]));
 
   return (
@@ -158,7 +172,7 @@ export default async function BankingPage() {
                   {c.status === 'NEEDS_RECONNECT' && c.provider === 'plaid' && plaidOn && (
                     <PlaidLinkButton reconnectConnectionId={c.id} label="Reconnect" variant="secondary" />
                   )}
-                  {c.status !== 'NEEDS_RECONNECT' && (
+                  {c.status !== 'NEEDS_RECONNECT' && c.provider !== 'upload' && (
                     <ActionButton action={syncConnectionAction.bind(null, c.id)} label="Sync now" />
                   )}
                   <ActionButton
@@ -202,6 +216,14 @@ export default async function BankingPage() {
           </div>
         );
       })}
+
+      {canManage && (
+        <StatementUploadForm
+          accounts={connections
+            .filter((c) => c.status !== 'REMOVED')
+            .flatMap((c) => c.accounts.map((a) => ({ value: a.id, label: `${c.institutionName} · ${a.name}${a.mask ? ` ••${a.mask}` : ''}` })))}
+        />
+      )}
 
       {flagged.length > 0 && (
         <div className="rounded-lg border border-amber-300 bg-white">
@@ -263,7 +285,10 @@ export default async function BankingPage() {
                   negative: t.amount < 0n,
                   suggestedAccountId: t.suggestedAccountId,
                   suggestedByRule: !!t.suggestedByRuleId,
+                  aiConfidence: t.aiConfidence,
+                  aiReason: t.aiReason,
                 }}
+                loanAccountIds={loanAccountIds}
                 accounts={categoryAccounts
                   .filter((a) => a.id !== t.bankAccountLink.ledgerAccountId)
                   .map((a) => ({ value: a.id, label: `${a.code} · ${a.name}` }))}
@@ -282,24 +307,31 @@ export default async function BankingPage() {
               <tr key={t.id} className="border-b border-slate-50 last:border-0">
                 <td className="px-5 py-2.5 text-slate-500 whitespace-nowrap">{t.date.toISOString().slice(0, 10)}</td>
                 <td className="px-3 py-2.5 w-full">{t.description}</td>
-                <td className="px-3 py-2.5">
+                <td className="px-3 py-2.5 whitespace-nowrap">
                   <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                    t.status === 'CATEGORIZED' ? 'bg-green-100 text-green-700'
-                    : t.status === 'MATCHED' ? 'bg-teal-50 text-teal-700'
-                    : 'bg-slate-100 text-slate-500'
-                  }`}>
-                    {t.status.toLowerCase()}
+                    t.status === 'EXCLUDED' ? 'bg-slate-100 text-slate-500'
+                    : t.categorizedBy === 'AI' ? 'bg-violet-100 text-violet-700'
+                    : t.categorizedBy === 'USER' ? 'bg-green-100 text-green-700'
+                    : 'bg-teal-50 text-teal-700'
+                  }`} title={t.aiReason ?? undefined}>
+                    {t.status === 'EXCLUDED' ? 'excluded'
+                      : t.categorizedBy === 'AI' ? `AI ${Math.round((t.aiConfidence ?? 0) * 100)}%`
+                      : t.categorizedBy === 'RULE' ? 'your rule'
+                      : t.categorizedBy === 'MERCHANT' ? 'built-in rule'
+                      : t.categorizedBy === 'TRANSFER' ? 'transfer'
+                      : t.status === 'MATCHED' ? 'matched' : 'you'}
                   </span>
                 </td>
                 <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap text-xs">
-                  {t.journalEntryId ? accountName.get(
-                    // display resolved via journal entry link
-                    '') ?? '' : ''}
+                  {entryCategory.get(t.journalEntryId ?? '') ?? ''}{' '}
                   {t.journalEntryId && (
                     <Link href={`/journal/${t.journalEntryId}`} className="text-teal-700 hover:underline">
-                      view entry
+                      entry
                     </Link>
                   )}
+                </td>
+                <td className="px-3 py-2.5 whitespace-nowrap">
+                  {canManage && <ActionButton action={recategorizeTxnAction.bind(null, t.id)} label="Undo" confirmLabel="Reverse & re-review" />}
                 </td>
                 <td className={`px-5 py-2.5 text-right tabular-nums whitespace-nowrap ${t.amount < 0n ? '' : 'text-green-700'}`}>
                   {formatMoney(t.amount, t.bankAccountLink.currency)}
