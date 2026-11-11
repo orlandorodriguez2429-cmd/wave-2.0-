@@ -1,5 +1,8 @@
 # Your Tax Solution Books
 
+**Put it online:** [Deploy to Render](https://render.com/deploy?repo=https://github.com/orlandorodriguez2429-cmd/wave-2.0-)
+(log in with GitHub, fill in the keys it asks for — see [DEPLOY.md](./DEPLOY.md)).
+
 Month-to-month bookkeeping for a tax and bookkeeping office's clients:
 
 1. **Bank in, automatically.** Each client connects their bank once (Plaid

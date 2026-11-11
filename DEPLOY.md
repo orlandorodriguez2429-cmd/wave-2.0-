@@ -51,7 +51,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ### 1. Create the services
 
 1. Push this repository to GitHub (it already is).
-2. In Render: **New → Blueprint**, pick the repository. Render reads
+2. Open https://render.com/deploy?repo=https://github.com/orlandorodriguez2429-cmd/wave-2.0-
+   (or in Render: **New → Blueprint**, pick the repository). Render reads
    `render.yaml` and proposes: a web service (`yts-books`), a cron job
    (`yts-books-daily-sync`) and a Postgres database (`yts-books-db`).
 3. For the database, choose a **paid plan that includes backups** (the free
