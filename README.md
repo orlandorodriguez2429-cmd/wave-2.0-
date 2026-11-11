@@ -55,6 +55,11 @@ printed to the server console.
 
 Tests: `npx vitest run` (unit + database integration; needs `DATABASE_URL`).
 
+Plaid check (real Plaid **sandbox**, no browser): with `PLAID_CLIENT_ID`,
+`PLAID_SECRET` (the *sandbox* secret) and `PLAID_ENV=sandbox` set, run
+`npm run plaid:check`. It connects First Platypus Bank, imports and sorts
+transactions, simulates an expired login, and disconnects.
+
 ## Configuration
 
 See `.env.example` for every variable. The important ones:

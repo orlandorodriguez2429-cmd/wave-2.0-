@@ -6,7 +6,7 @@ import { prisma } from '@/lib/db';
 import { encryptSecret, decryptSecret } from '@/lib/crypto';
 import { LedgerValidationError } from '@/lib/ledger/validate';
 import { MOCK_ACCOUNTS, MOCK_INSTITUTION, type ExternalBankAccount } from './provider';
-import { exchangePublicToken, removeItem, IMPORTED_ACCOUNT_TYPES } from './plaid';
+import { exchangePublicToken, removeItem, IMPORTED_ACCOUNT_TYPES, SKIPPED_SUBTYPES } from './plaid';
 
 export { syncConnection } from './sync';
 
@@ -55,7 +55,9 @@ export async function connectBank(opts: {
  */
 export async function connectPlaidItem(opts: { businessId: string; userId: string; publicToken: string }) {
   const item = await exchangePublicToken(opts.publicToken);
-  const accounts = item.accounts.filter((a) => a.type && IMPORTED_ACCOUNT_TYPES.has(a.type));
+  const accounts = item.accounts.filter(
+    (a) => a.type && IMPORTED_ACCOUNT_TYPES.has(a.type) && !SKIPPED_SUBTYPES.has(a.subtype ?? ''),
+  );
   if (accounts.length === 0) {
     await removeItem(item.accessToken).catch(() => undefined);
     throw new LedgerValidationError(

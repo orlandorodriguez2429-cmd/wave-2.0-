@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate",
-    "test": "vitest run"
+    "test": "vitest run",
+    "plaid:check": "tsx scripts/plaid-sandbox-check.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",

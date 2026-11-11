@@ -32,6 +32,7 @@ describe('merchant rules', () => {
   const m = (d: string, amt: bigint, kind = 'depository') => matchMerchantRule(d, amt, kind)?.accountCode ?? null;
   it('routes balance-sheet items off the P&L', () => {
     expect(m('CHASE CREDIT CRD AUTOPAY', -50000n)).toBe('2100');
+    expect(m('CREDIT CARD 3333 PAYMENT *//', -2500n)).toBe('2100'); // Plaid sandbox wording
     expect(m('CA DEPT OF TAX AND FEE ADMIN CDTFA', -12000n)).toBe('2200');
     expect(m('OWNER DRAW', -100000n)).toBe('3000');
     expect(m('OWNER CONTRIBUTION', 100000n)).toBe('3000');
@@ -49,6 +50,11 @@ describe('merchant rules', () => {
     expect(m('OFFICE DEPOT #1123', -8433n)).toBe('6300');
     expect(m('MONTHLY MAINTENANCE FEE', -1500n)).toBe('6100');
     expect(m('MAYA DESIGN CO INV 88', -90000n)).toBeNull();
+  });
+  it('a merchant refund goes back to the same expense', () => {
+    expect(m('United Airlines **** REFUND ****', 50000n)).toBe('6700');
+    expect(m('OFFICE DEPOT RETURN #1123', 2500n)).toBe('6300');
+    expect(m('UNITED AIRLINES', 50000n)).toBeNull(); // money in without "refund" is not assumed
   });
 });
 

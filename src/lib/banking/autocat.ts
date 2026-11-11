@@ -88,25 +88,37 @@ export async function autoCategorize(opts: {
     where: { businessId: business.id, status: 'PENDING', needsReview: false },
     select: { id: true, amount: true, date: true, bankAccountLinkId: true },
   });
-  for (const out of fresh) {
-    if (out.amount >= 0n || done.has(out.id) || isClosed(out.date)) continue;
+  // Either half can be the new one (the card's "payment received" often
+  // arrives a day after the checking side).
+  for (const t of fresh) {
+    if (done.has(t.id) || isClosed(t.date)) continue;
     const partner = pendingAll.find(
       (p) =>
         !done.has(p.id) &&
-        p.id !== out.id &&
-        p.bankAccountLinkId !== out.bankAccountLinkId &&
-        p.amount === -out.amount &&
-        Math.abs(p.date.getTime() - out.date.getTime()) <= TRANSFER_WINDOW_DAYS * 86400_000,
+        p.id !== t.id &&
+        p.bankAccountLinkId !== t.bankAccountLinkId &&
+        p.amount === -t.amount &&
+        Math.abs(p.date.getTime() - t.date.getTime()) <= TRANSFER_WINDOW_DAYS * 86400_000,
     );
     if (!partner) continue;
+    const [outId, inId] = t.amount < 0n ? [t.id, partner.id] : [partner.id, t.id];
     try {
-      await postTransfer({ businessId: business.id, userId, outId: out.id, inId: partner.id });
-      done.add(out.id).add(partner.id);
+      await postTransfer({ businessId: business.id, userId, outId, inId });
+      done.add(t.id).add(partner.id);
       stats.transfers++;
     } catch (err) {
       if (!(err instanceof LedgerValidationError)) throw err;
     }
   }
+
+  // A card payment from checking when the card itself is connected: the
+  // card's own ledger account is the target, and the card-side row will
+  // usually pair it as a transfer — so suggest, don't post to the generic
+  // Credit Card Payable.
+  const cardLinks = await prisma.bankAccountLink.findMany({
+    where: { businessId: business.id, type: 'credit', connection: { status: { not: 'REMOVED' } } },
+    select: { ledgerAccountId: true, name: true, mask: true },
+  });
 
   // 1 + 2. Business rules, then built-in merchant rules.
   const rules = await prisma.categorizationRule.findMany({
@@ -133,6 +145,12 @@ export async function autoCategorize(opts: {
     const merchant = matchMerchantRule(t.description, t.amount, t.bankAccountLink.type);
     const merchantAccount = merchant ? byCode.get(merchant.accountCode) : undefined;
     if (merchant && merchantAccount && merchantAccount.id !== t.bankAccountLink.ledgerAccountId) {
+      if (merchant.accountCode === '2100' && cardLinks.length > 0) {
+        await suggest(t, cardLinks.length === 1 ? cardLinks[0].ledgerAccountId : null, {
+          reason: 'Card payment: waiting for the matching payment on the connected card (it will pair as a transfer), or pick the card account.',
+        });
+        continue;
+      }
       if (merchant.suggestOnly) {
         await suggest(t, merchantAccount.id, { reason: merchant.suggestOnly });
         continue;

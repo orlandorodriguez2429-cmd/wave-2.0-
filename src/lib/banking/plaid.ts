@@ -17,6 +17,8 @@ export const DAYS_REQUESTED = 730;
 
 /** Account types we import as bank feeds. Loans/investments come later. */
 export const IMPORTED_ACCOUNT_TYPES = new Set(['depository', 'credit']);
+/** Personal accounts that can show up in the same bank login: never imported. */
+export const SKIPPED_SUBTYPES = new Set(['hsa']);
 
 const CLIENT_NAME = 'Your Tax Solution';
 

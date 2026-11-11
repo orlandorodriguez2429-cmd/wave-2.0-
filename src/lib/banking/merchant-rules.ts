@@ -25,7 +25,7 @@ const w = (words: string) => new RegExp(`\\b(?:${words})\\b`, 'i');
 
 export const MERCHANT_RULES: MerchantRule[] = [
   // --- Balance sheet -----------------------------------------------------------
-  { name: 'Credit card payment', pattern: /(CREDIT CA?RD|CRD|CARD)\s*(E?PAYMENT|PMT|AUTOPAY)|AUTOPAY PAYMENT|EPAYMENT|PAYMENT TO (CHASE|AMEX|CITI|DISCOVER|CAPITAL ONE)/i, accountCode: '2100', direction: 'OUTFLOW', feedKind: 'depository' },
+  { name: 'Credit card payment', pattern: /(CREDIT CA?RD|CRD|CARD)\s*(\d{4}\s*)?(E?PAYMENT|PMT|AUTOPAY)|AUTOPAY PAYMENT|EPAYMENT|PAYMENT TO (CHASE|AMEX|CITI|DISCOVER|CAPITAL ONE)/i, accountCode: '2100', direction: 'OUTFLOW', feedKind: 'depository' },
   { name: 'Sales tax payment', pattern: /SALES (AND USE )?TAX|(DEPT|DEPARTMENT) OF (REVENUE|TAXATION)|CDTFA|COMPTROLLER/i, accountCode: '2200', direction: 'OUTFLOW' },
   { name: 'Owner draw', pattern: /OWNER'?S? DRAW|DRAW TO OWNER|OWNER DISTRIBUTION/i, accountCode: '3000', direction: 'OUTFLOW' },
   { name: 'Owner contribution', pattern: /OWNER'?S? (CONTRIBUTION|INVESTMENT)|CAPITAL CONTRIBUTION/i, accountCode: '3000', direction: 'INFLOW' },
@@ -47,14 +47,19 @@ export const MERCHANT_RULES: MerchantRule[] = [
   { name: 'Rent', pattern: /\bRENT\b|WEWORK|REGUS/i, accountCode: '6500', direction: 'OUTFLOW' },
 ];
 
+const REFUND = /\b(REFUND|RETURN|CREDIT VOUCHER|REVERSAL)\b/i;
+
 export function matchMerchantRule(
   description: string,
   amount: bigint,
   feedKind: string | null,
 ): MerchantRule | null {
   const direction: Direction = amount < 0n ? 'OUTFLOW' : 'INFLOW';
+  // A refund from a merchant reduces the same expense it was bought under.
+  const refund = direction === 'INFLOW' && REFUND.test(description);
   for (const rule of MERCHANT_RULES) {
-    if (rule.direction && rule.direction !== direction) continue;
+    const expenseRule = rule.direction === 'OUTFLOW' && /^[5-7]/.test(rule.accountCode);
+    if (rule.direction && rule.direction !== direction && !(refund && expenseRule)) continue;
     if (rule.feedKind && feedKind && rule.feedKind !== feedKind) continue;
     if (rule.pattern.test(description)) return rule;
   }
