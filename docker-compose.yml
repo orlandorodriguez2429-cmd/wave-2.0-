@@ -33,8 +33,13 @@ services:
       # Local trial only: runs without Plaid/cron keys and loads demo data.
       # NEVER set these on a real server (see DEPLOY.md).
       LOCAL_DEMO: "true"
-      SEED_DEMO_DATA: "true"
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
       APP_URL: http://localhost:3000
+      # Optional — put these in a file named .env next to this one:
+      PLAID_CLIENT_ID: ${PLAID_CLIENT_ID:-}
+      PLAID_SECRET: ${PLAID_SECRET:-}
+      PLAID_ENV: ${PLAID_ENV:-sandbox}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy
