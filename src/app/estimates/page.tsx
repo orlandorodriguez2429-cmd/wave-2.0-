@@ -18,7 +18,7 @@ export default async function EstimatesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Estimates</h1>
-        <Link href="/estimates/new" className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+        <Link href="/estimates/new" className="rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
           + New estimate
         </Link>
       </div>
@@ -38,7 +38,7 @@ export default async function EstimatesPage() {
             {estimates.map((e) => (
               <tr key={e.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50">
                 <td className="px-5 py-3">
-                  <Link href={`/estimates/${e.id}`} className="font-medium text-blue-700 hover:underline">
+                  <Link href={`/estimates/${e.id}`} className="font-medium text-teal-700 hover:underline">
                     EST-{e.number}
                   </Link>
                 </td>
@@ -47,7 +47,7 @@ export default async function EstimatesPage() {
                 <td className="px-3 py-3 text-slate-500">{e.issueDate.toISOString().slice(0, 10)}</td>
                 <td className="px-3 py-3">
                   {e.convertedInvoice ? (
-                    <Link href={`/invoices/${e.convertedInvoice.id}`} className="text-blue-700 hover:underline">
+                    <Link href={`/invoices/${e.convertedInvoice.id}`} className="text-teal-700 hover:underline">
                       #{e.convertedInvoice.number}
                     </Link>
                   ) : (

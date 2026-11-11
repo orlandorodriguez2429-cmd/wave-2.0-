@@ -234,7 +234,7 @@ export function DocumentForm({
                 <button
                   type="button"
                   onClick={() => setRows((prev) => [...prev, emptyRow(defaultAccount)])}
-                  className="text-blue-600 hover:underline font-medium"
+                  className="text-teal-600 hover:underline font-medium"
                 >
                   + Add line
                 </button>
@@ -261,7 +261,7 @@ export function DocumentForm({
       <button
         type="submit"
         disabled={pending}
-        className="rounded-md bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        className="rounded-md bg-teal-600 px-5 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
       >
         {pending ? 'Saving…' : mode === 'invoice' ? 'Save draft invoice' : 'Save estimate'}
       </button>

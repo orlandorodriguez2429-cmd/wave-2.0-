@@ -36,7 +36,7 @@ export default async function Dashboard1099({
           <h1 className="text-2xl font-semibold">1099 Tracking</h1>
           <p className="text-sm text-slate-500 mt-1">
             Tax year {taxYear} · NEC/MISC threshold {formatMoney(config.necMiscThreshold, cur)} ·{' '}
-            <Link href="/settings/1099" className="text-blue-700 hover:underline">thresholds &amp; settings</Link>
+            <Link href="/settings/1099" className="text-teal-700 hover:underline">thresholds &amp; settings</Link>
           </p>
         </div>
         <form method="GET" className="flex items-end gap-2">
@@ -76,7 +76,7 @@ export default async function Dashboard1099({
             {totals.map((t) => (
               <tr key={t.vendorId} className="border-b border-slate-50 last:border-0 hover:bg-slate-50">
                 <td className="px-5 py-3">
-                  <Link href={`/vendors/${t.vendorId}?year=${taxYear}`} className="font-medium text-blue-700 hover:underline">
+                  <Link href={`/vendors/${t.vendorId}?year=${taxYear}`} className="font-medium text-teal-700 hover:underline">
                     {t.vendorName}
                   </Link>
                 </td>

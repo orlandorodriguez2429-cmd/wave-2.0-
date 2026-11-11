@@ -17,6 +17,8 @@ import {
 } from '@/lib/invoicing/invoices';
 import { convertEstimateToInvoice, createEstimate, setEstimateStatus } from '@/lib/invoicing/estimates';
 import { createExpense, reverseExpense } from '@/lib/expenses';
+import { sendInvoiceReminder } from '@/lib/invoicing/reminders';
+import { applyLateFee } from '@/lib/invoicing/latefees';
 import { storeUpload } from '@/lib/storage';
 import type { PaymentMethod } from '@/generated/prisma/enums';
 import type { ActionResult } from './actions';
@@ -236,6 +238,46 @@ export async function recordPaymentAction(_prev: ActionResult, formData: FormDat
   } catch (err) {
     return errorResult(err);
   }
+}
+
+export async function sendInvoiceReminderAction(invoiceId: string): Promise<void> {
+  const { business } = await requireContext('EMPLOYEE');
+  const result = await sendInvoiceReminder({ businessId: business.id, invoiceId });
+  if (!result.sent) throw new LedgerValidationError(result.reason ?? 'Could not send reminder.');
+  revalidatePath(`/invoices/${invoiceId}`);
+}
+
+export async function applyLateFeeAction(invoiceId: string): Promise<void> {
+  const { user, business } = await requireContext('ACCOUNTANT');
+  await applyLateFee({ businessId: business.id, userId: user.id, invoiceId });
+  revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath('/invoices');
+}
+
+export async function updateLateFeeSettingsAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  const { business } = await requireContext('OWNER');
+  const enabled = formData.get('enabled') === 'on';
+  const rateStr = String(formData.get('ratePercent') ?? '').trim();
+  const graceStr = String(formData.get('graceDays') ?? '0').trim();
+
+  if (!enabled) {
+    await prisma.business.update({ where: { id: business.id }, data: { lateFeePercentagePpm: null } });
+    revalidatePath('/settings/invoicing');
+    return {};
+  }
+
+  const m = /^(\d{1,2})(?:\.(\d{1,4}))?$/.exec(rateStr);
+  if (!m) return { error: 'Rate must be a percentage like 1.5 (max 4 decimal places).' };
+  const ratePpm = Number(m[1]) * 10_000 + Number((m[2] ?? '').padEnd(4, '0'));
+  const graceDays = Number.parseInt(graceStr, 10);
+  if (!Number.isInteger(graceDays) || graceDays < 0) return { error: 'Grace period must be a non-negative number of days.' };
+
+  await prisma.business.update({
+    where: { id: business.id },
+    data: { lateFeePercentagePpm: ratePpm, lateFeeGraceDays: graceDays },
+  });
+  revalidatePath('/settings/invoicing');
+  return {};
 }
 
 // ---------------------------------------------------------------------------

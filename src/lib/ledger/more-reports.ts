@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import type { PnlSection } from './reports';
 
 // Phase 6 reports: cash flow, sales tax, aged receivables. Like the core
 // reports these are derived from posted entries (or open invoices) at query
@@ -160,6 +161,135 @@ export async function agedReceivables(businessId: string, asOf: Date) {
       number: inv.number,
       customerName: inv.customer.name,
       dueDate: inv.dueDate.toISOString().slice(0, 10),
+      balance,
+      bucket,
+    });
+  }
+  const buckets = { current: 0n, '1-30': 0n, '31-60': 0n, '61-90': 0n, '90+': 0n };
+  for (const r of rows) buckets[r.bucket] += r.balance;
+  const total = rows.reduce((s, r) => s + r.balance, 0n);
+  return { rows: rows.sort((a, b) => a.dueDate.localeCompare(b.dueDate)), buckets, total };
+}
+
+// ---------------------------------------------------------------------------
+// Cash-basis Profit & Loss
+// ---------------------------------------------------------------------------
+//
+// The ledger itself is accrual (invoices/bills post revenue/expense at
+// approval, not at cash movement), so a true cash-basis view can't just
+// re-filter posted entries — it has to re-derive recognition from the
+// source documents: a customer payment allocates back across the invoice's
+// income lines (plus any late fee charged), and a bill payment allocates
+// back across the bill's expense lines. Standalone Expenses are already a
+// cash event at entry time, so they count on both bases identically.
+
+function accrueByAccount(map: Map<string, bigint>, accountId: string, amount: bigint) {
+  map.set(accountId, (map.get(accountId) ?? 0n) + amount);
+}
+
+export async function cashBasisProfitAndLoss(businessId: string, opts: { from: Date; to: Date }) {
+  const accounts = await prisma.account.findMany({ where: { businessId } });
+  const accountById = new Map(accounts.map((a) => [a.id, a]));
+  const lateFeeAccountId = accounts.find((a) => a.subtype === 'late_fee_income')?.id;
+
+  const perAccount = new Map<string, bigint>();
+
+  const payments = await prisma.payment.findMany({
+    where: { businessId, date: { gte: opts.from, lte: opts.to } },
+    include: {
+      invoice: {
+        include: { lines: true, lateFeeCharges: true },
+      },
+    },
+  });
+  for (const payment of payments) {
+    const invoice = payment.invoice;
+    if (invoice.total === 0n) continue;
+    const parts: Array<{ accountId: string; amount: bigint }> = [
+      ...invoice.lines.map((l) => ({ accountId: l.incomeAccountId, amount: l.amount })),
+      ...(lateFeeAccountId
+        ? invoice.lateFeeCharges.map((f) => ({ accountId: lateFeeAccountId, amount: f.amount }))
+        : []),
+    ];
+    for (const part of parts) {
+      const allocated = (payment.amount * part.amount) / invoice.total;
+      accrueByAccount(perAccount, part.accountId, allocated);
+    }
+  }
+
+  const billPayments = await prisma.billPayment.findMany({
+    where: { businessId, date: { gte: opts.from, lte: opts.to } },
+    include: { bill: { include: { lines: true } } },
+  });
+  for (const payment of billPayments) {
+    const bill = payment.bill;
+    if (bill.total === 0n) continue;
+    for (const line of bill.lines) {
+      const allocated = (payment.amount * line.amount) / bill.total;
+      accrueByAccount(perAccount, line.expenseAccountId, -allocated);
+    }
+  }
+
+  const expenseLines = await prisma.expenseLine.findMany({
+    where: { expense: { businessId, date: { gte: opts.from, lte: opts.to } } },
+  });
+  for (const line of expenseLines) {
+    accrueByAccount(perAccount, line.expenseAccountId, -line.amount);
+  }
+
+  const section = (filter: (accountId: string) => boolean, title: string): PnlSection => {
+    const rows = [...perAccount.entries()]
+      .filter(([id]) => filter(id))
+      .map(([id, amount]) => {
+        const a = accountById.get(id)!;
+        return { accountId: id, code: a.code, name: a.name, amount: a.type === 'INCOME' ? amount : -amount };
+      })
+      .filter((r) => r.amount !== 0n)
+      .sort((a, b) => a.code.localeCompare(b.code));
+    return { title, rows, total: rows.reduce((s, r) => s + r.amount, 0n) };
+  };
+
+  const income = section((id) => accountById.get(id)?.type === 'INCOME', 'Income');
+  const cogs = section((id) => accountById.get(id)?.subtype === 'cogs', 'Cost of Goods Sold');
+  const expenses = section(
+    (id) => accountById.get(id)?.type === 'EXPENSE' && accountById.get(id)?.subtype !== 'cogs',
+    'Operating Expenses',
+  );
+
+  const grossProfit = income.total - cogs.total;
+  const netIncome = grossProfit - expenses.total;
+  return { income, cogs, expenses, grossProfit, netIncome };
+}
+
+// ---------------------------------------------------------------------------
+// Aged payables
+// ---------------------------------------------------------------------------
+
+export interface AgedPayableRow {
+  billId: string;
+  number: number;
+  vendorName: string;
+  dueDate: string;
+  balance: bigint;
+  bucket: 'current' | '1-30' | '31-60' | '61-90' | '90+';
+}
+
+export async function agedPayables(businessId: string, asOf: Date) {
+  const bills = await prisma.bill.findMany({
+    where: { businessId, status: 'OPEN' },
+    include: { vendor: true, payments: true },
+  });
+  const rows: AgedPayableRow[] = [];
+  for (const bill of bills) {
+    const balance = bill.total - bill.payments.reduce((s, p) => s + p.amount, 0n);
+    if (balance <= 0n) continue;
+    const daysOver = Math.floor((asOf.getTime() - bill.dueDate.getTime()) / 86400_000);
+    const bucket = daysOver <= 0 ? 'current' : daysOver <= 30 ? '1-30' : daysOver <= 60 ? '31-60' : daysOver <= 90 ? '61-90' : '90+';
+    rows.push({
+      billId: bill.id,
+      number: bill.number,
+      vendorName: bill.vendor.name,
+      dueDate: bill.dueDate.toISOString().slice(0, 10),
       balance,
       bucket,
     });

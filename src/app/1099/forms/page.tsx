@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 
 const STATUS_STYLES: Record<string, string> = {
   DRAFT: 'bg-slate-100 text-slate-600',
-  READY: 'bg-blue-50 text-blue-700',
+  READY: 'bg-teal-50 text-teal-700',
   SUBMITTED: 'bg-amber-100 text-amber-700',
   ACCEPTED: 'bg-green-100 text-green-700',
   REJECTED: 'bg-red-100 text-red-700',
@@ -93,7 +93,7 @@ export default async function FormsPage({ searchParams }: { searchParams: Promis
               return (
                 <tr key={f.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50">
                   <td className="px-5 py-3">
-                    <Link href={`/1099/forms/${f.id}`} className="font-medium text-blue-700 hover:underline">
+                    <Link href={`/1099/forms/${f.id}`} className="font-medium text-teal-700 hover:underline">
                       {vendor?.name ?? '—'}
                     </Link>
                     {f.correctsId && <span className="ml-2 rounded bg-violet-100 px-1.5 py-0.5 text-xs text-violet-700">correction</span>}

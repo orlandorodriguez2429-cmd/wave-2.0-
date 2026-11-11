@@ -1,58 +1,97 @@
-# Wave 2.0
+# Your Tax Solution Books
 
-Small-business accounting with correct double-entry bookkeeping underneath, and a first-class 1099 contractor workflow on top. See [PROJECT.md](./PROJECT.md) for the full product brief and phase plan.
+**Put it online:** [Deploy to Render](https://render.com/deploy?repo=https://github.com/orlandorodriguez2429-cmd/wave-2.0-)
+(log in with GitHub, fill in the keys it asks for — see [DEPLOY.md](./DEPLOY.md)).
 
-**Status: Phases 1–6 built** — ledger core · invoicing & expenses · bank feeds & reconciliation · W-9/1099 tracking · 1099 generation & e-file · reports, auth, multi-entity, roles, close-the-books, API.
+Month-to-month bookkeeping for a tax and bookkeeping office's clients:
 
-## Stack
+1. **Bank in, automatically.** Each client connects their bank once (Plaid
+   Link) — or you (or they) upload a PDF or CSV statement, which is only
+   accepted if opening balance + transactions = closing balance. New transactions arrive by webhook,
+   with a daily backstop sync.
+2. **Sorted automatically.** Transfers between the client's own accounts,
+   then your rules (including ones learned from your corrections), then
+   built-in merchant rules, then an AI fallback. Only the unclear ones come
+   to you. Balance-sheet items (transfers, card payments, owner draws, loans,
+   sales tax) stay off the P&L; loan payments get an interest/principal split.
+3. **Close each month.** Every month shows: not connected / no bank data /
+   N to review / ready / closed. Closing is blocked while anything is
+   unreviewed; reopening needs a reason and is audit-logged.
+4. **Profit & Loss** any month, quarter or year, with PDF/CSV export.
+5. **1099s:** W-9 collection, payment tracking with thresholds, form
+   generation and e-file behind an explicit human "Submit to IRS" step.
+6. **Client portal:** each client signs in (two-step verification required)
+   and sees only their own business, read-only: dashboard, months, P&L,
+   transactions, and their bank connection.
+7. **All clients view** for the office: bank status, last sync, items to
+   review, months not closed, 1099 watch — problems first.
 
-- Next.js 15 (App Router) + TypeScript + Tailwind CSS 4
-- PostgreSQL via Prisma 7 (`@prisma/adapter-pg` driver adapter)
-- pdfkit (invoice + 1099 PDFs), Vitest (unit + DB integration tests)
+Underneath: real double-entry bookkeeping (integer cents, immutable ledger,
+corrections by reversal only), multi-business, roles, append-only audit log.
 
-## Getting started
+## Run it locally
 
-Requirements: Node 20+, PostgreSQL 14+.
+Requirements: Node 20+, PostgreSQL 14+ (or just Docker).
+
+**Docker (quickest):**
+
+```bash
+docker compose up
+```
+
+Open http://localhost:3000, sign in as `demo@wave2.local` / `demo-password-123`,
+and set up two-step verification with any authenticator app.
+
+**Without Docker:**
 
 ```bash
 npm install
-
-# database + role (adjust to taste)
-sudo -u postgres psql \
-  -c "CREATE ROLE wave WITH LOGIN PASSWORD 'wave_dev_password' CREATEDB;" \
-  -c "CREATE DATABASE wave OWNER wave;"
-
-cp .env.example .env   # set DATABASE_URL and a real ENCRYPTION_KEY (32 bytes base64)
-
-npx prisma migrate deploy   # apply all migrations
-npx prisma db seed          # demo business + sample data
-npm run dev                 # http://localhost:3000
+cp .env.example .env          # set DATABASE_URL and ENCRYPTION_KEY
+npx prisma migrate deploy
+npx prisma db seed            # demo business + sample data
+npm run dev
 ```
 
-**Demo login:** `demo@wave2.local` / `demo-password-123`
+Everything works without any external keys: the bank feed uses a built-in
+sandbox, categorization uses rules (AI is skipped without a key), email is
+printed to the server console.
 
-Background jobs (recurring invoices): `npx tsx scripts/run-jobs.ts` on a cron.
-Tests: `npx vitest run` (59 tests; integration tests hit `DATABASE_URL`).
+Tests: `npx vitest run` (unit + database integration; needs `DATABASE_URL`).
 
-## Environment
+Plaid check (real Plaid **sandbox**, no browser): with `PLAID_CLIENT_ID`,
+`PLAID_SECRET` (the *sandbox* secret) and `PLAID_ENV=sandbox` set, run
+`npm run plaid:check`. It connects First Platypus Bank, imports and sorts
+transactions, simulates an expired login, and disconnects.
+
+## Configuration
+
+See `.env.example` for every variable. The important ones:
 
 | Variable | Purpose |
 | --- | --- |
-| `DATABASE_URL` | Postgres connection (this is a ledger — Postgres only). |
-| `ENCRYPTION_KEY` | 32 bytes base64; AES-256-GCM for TINs, EINs, bank tokens. Sessions are HMAC-signed with a derived key. |
-| `EFILE_TRANSMITTER` | `mock` (sandbox provider, default) or `iris` (needs `IRIS_TCC` + credentials). |
-| `PLAID_CLIENT_ID` / `PLAID_SECRET` | Activates the real Plaid adapter (sandbox bank feed works without). |
+| `DATABASE_URL` | Postgres. |
+| `ENCRYPTION_KEY` | 32 random bytes, base64. Encrypts bank tokens, TINs, MFA secrets; signs sessions. Back it up — backups are unreadable without it. |
+| `PLAID_CLIENT_ID` / `PLAID_SECRET` / `PLAID_ENV` / `PLAID_WEBHOOK_URL` | Real bank connections (sandbox until Plaid approves production). |
+| `ANTHROPIC_API_KEY` | Optional AI categorization fallback. |
+| `CRON_SECRET` | Protects `POST /api/cron/sync` (daily backstop sync). |
+| `APP_URL` | Public https address (invitation links). |
+| `EMAIL_PROVIDER` + `SMTP_*` | `console` in development, `smtp` in production. |
 
-## Architecture notes
+In production the server refuses to start without `ENCRYPTION_KEY`,
+`PLAID_*`, `CRON_SECRET` and an https `APP_URL`.
 
-- **Double entry, always.** Balanced debit/credit journal entries against the chart of accounts; enforced in the service layer *and* by Postgres triggers (posting gate, immutability of posted entries and lines, positive-amount CHECKs). Corrections are linked reversing entries — nothing is ever edited in place.
-- **Money is integers** (BigInt minor units) end to end; quantities in thousandths; tax rates in parts-per-million; FX via just-in-time integer arithmetic with rounding-residue allocation.
-- **Every business document posts through the same engine**: invoice approval, payments, voids, expenses, bank-feed categorizations. Reports (trial balance, P&L, balance sheet, cash flow, sales tax, aged receivables) are derived at query time and export to CSV.
-- **1099 pipeline** (the differentiator): W-9 collection via single-use public links with e-consent capture → per-year, per-box payment accumulation with the card/1099-K exclusion → per-tax-year configurable thresholds ($600 → $2,000 for TY2026+, editable, verify against IRS.gov) → versioned immutable forms with linked corrections → pluggable transmitter (sandbox provider now, direct IRIS A2A stub behind a TCC) → Copy B delivery with consent rules. E-file submission only ever happens behind an explicit human confirmation click.
-- **Secrets**: TINs/EINs/bank tokens stored AES-256-GCM encrypted, displayed masked, never logged or put in audit payloads. API tokens stored as SHA-256 hashes.
-- **Auth & tenancy**: signed cookie sessions, multi-business per login with a switcher, roles (owner / accountant / employee / view-only) enforced in every mutating action, append-only audit log, period close locks the ledger.
-- **Developer API**: `GET /api/v1/{accounts,invoices,reports/trial-balance}`, `GET|POST /api/v1/webhooks` with `Authorization: Bearer wave_…`; webhook deliveries HMAC-signed (`X-Wave-Signature`).
+## Docs
 
-## What is sandboxed vs production-ready
+- **[DEPLOY.md](./DEPLOY.md)** — hosting recommendation (Render), step-by-step
+  deploy, migrations, Plaid webhook, daily sync, backups and test restore,
+  production checklist.
+- **[SECURITY.md](./SECURITY.md)** — access control, encryption, MFA, logging,
+  vendors, retention, incident response. Written for Plaid's security
+  questionnaire and the office's written information security plan.
+- [PROJECT.md](./PROJECT.md) — the original product brief (historical).
 
-Real external integrations are behind adapters with working sandbox implementations: bank feeds (mock provider ↔ Plaid), invoice payments (sandbox portal button ↔ Stripe Checkout), e-file (mock transmitter ↔ provider API / IRIS A2A), file storage (local disk ↔ S3). Receipt OCR, W-2 payroll, late fees/reminders delivery (email), and Aged Payables (needs a bills module) are noted future work.
+## Stack
+
+Next.js 15 (App Router) · TypeScript · Tailwind · PostgreSQL via Prisma 7 ·
+Plaid (`plaid`, `react-plaid-link`) · Anthropic SDK · pdfkit · nodemailer ·
+Vitest.

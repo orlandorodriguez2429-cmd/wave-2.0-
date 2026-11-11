@@ -146,7 +146,7 @@ export function NewExpenseForm({
                 <button
                   type="button"
                   onClick={() => setRows((p) => [...p, { accountId: expenseAccounts[0]?.value ?? '', amount: '', description: '' }])}
-                  className="text-blue-600 hover:underline text-sm font-medium"
+                  className="text-teal-600 hover:underline text-sm font-medium"
                 >
                   + Split line
                 </button>
@@ -157,7 +157,7 @@ export function NewExpenseForm({
       </div>
 
       {state.error && <p className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{state.error}</p>}
-      <button type="submit" disabled={pending} className="rounded-md bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+      <button type="submit" disabled={pending} className="rounded-md bg-teal-600 px-5 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50">
         {pending ? 'Saving…' : 'Save expense'}
       </button>
     </form>

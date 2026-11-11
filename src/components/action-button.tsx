@@ -20,7 +20,7 @@ export function ActionButton({
 
   const cls =
     variant === 'primary'
-      ? 'bg-blue-600 text-white hover:bg-blue-700'
+      ? 'bg-teal-600 text-white hover:bg-teal-700'
       : variant === 'danger'
         ? 'bg-red-600 text-white hover:bg-red-700'
         : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50';

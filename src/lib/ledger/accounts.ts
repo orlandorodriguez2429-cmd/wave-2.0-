@@ -18,3 +18,27 @@ export async function systemAccount(db: Db, businessId: string, subtype: string)
   }
   return account;
 }
+
+/**
+ * Find a business's account by code, creating it from the standard template
+ * if this (older) business doesn't have it yet. Used for accounts added to
+ * the template after a business was created (e.g. 7100 Interest Expense).
+ */
+export async function ensureTemplateAccount(db: Db, businessId: string, code: string) {
+  const existing = await db.account.findUnique({ where: { businessId_code: { businessId, code } } });
+  if (existing) return existing;
+  const { STANDARD_COA } = await import('./coa-template');
+  const spec = STANDARD_COA.find((a) => a.code === code);
+  if (!spec) throw new Error(`No template account ${code}.`);
+  return db.account.create({
+    data: {
+      businessId,
+      code: spec.code,
+      name: spec.name,
+      type: spec.type,
+      subtype: spec.subtype,
+      description: spec.description,
+      isSystem: spec.isSystem ?? false,
+    },
+  });
+}

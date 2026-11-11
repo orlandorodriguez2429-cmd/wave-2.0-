@@ -69,7 +69,7 @@ export default async function BalanceSheetPage({
           <h1 className="text-2xl font-semibold">Balance Sheet</h1>
           <p className="text-sm text-slate-500 mt-1">
             As of {asOf} · {currency} ·{' '}
-            <a href={`/reports/export/balance-sheet?to=${asOf}`} className="text-blue-700 hover:underline">CSV</a>
+            <a href={`/reports/export/balance-sheet?to=${asOf}`} className="text-teal-700 hover:underline">CSV</a>
           </p>
         </div>
         <DateRangeForm to={asOf} toOnly />
