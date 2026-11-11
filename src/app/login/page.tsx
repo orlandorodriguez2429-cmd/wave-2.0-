@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { readSession } from '@/lib/auth';
+import { setupAvailable } from '@/lib/setup';
 import { LoginForm } from './login-form';
 
 export const dynamic = 'force-dynamic';
@@ -7,6 +8,7 @@ export const dynamic = 'force-dynamic';
 export default async function LoginPage() {
   const session = await readSession();
   if (session) redirect(session.role === 'CLIENT' ? '/client' : '/');
+  if (await setupAvailable()) redirect('/setup');
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-slate-100">
       <div className="w-full max-w-sm space-y-6 rounded-xl border border-slate-200 bg-white p-8 shadow-sm">

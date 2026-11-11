@@ -23,6 +23,7 @@ const PUBLIC_PREFIXES = [
   '/login', // includes /login/mfa (guarded by its own pending-MFA cookie)
   '/invite/',
   '/reset/',
+  '/setup',
   '/w9/',
   '/portal/',
   '/pay/',

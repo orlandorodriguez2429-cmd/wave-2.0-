@@ -22,6 +22,7 @@ import { hit, isLocked, LIMITS, recordFailure, recordSuccess } from '@/lib/rate-
 import { acceptInvite, createInvite, InviteError } from '@/lib/invites';
 import { deleteBusiness } from '@/lib/retention';
 import { requestPasswordReset, resetPassword, ResetError } from '@/lib/password-reset';
+import { runSetup, SetupError } from '@/lib/setup';
 import type { MembershipRole } from '@/generated/prisma/enums';
 import type { ActionResult } from './actions';
 
@@ -335,4 +336,24 @@ export async function resetPasswordAction(token: string, _prev: ActionResult, fo
     throw err;
   }
   redirect('/login?reset=1');
+}
+
+/** First-run owner account (fresh production database only). */
+export async function setupAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  if (!(await hit(`setup:ip:${await clientIp()}`, LIMITS.mfaPerUser))) return { error: TOO_MANY };
+  let result;
+  try {
+    result = await runSetup({
+      code: String(formData.get('code') ?? ''),
+      name: String(formData.get('name') ?? ''),
+      email: String(formData.get('email') ?? ''),
+      businessName: String(formData.get('businessName') ?? ''),
+      password: String(formData.get('password') ?? ''),
+    });
+  } catch (err) {
+    if (err instanceof SetupError) return { error: err.message };
+    throw err;
+  }
+  await setPendingMfa({ userId: result.userId, stage: 'enroll', businessId: result.businessId });
+  redirect('/login/mfa');
 }

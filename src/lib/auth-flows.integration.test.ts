@@ -160,3 +160,17 @@ describe('password reset', () => {
     expect(await checkResetToken(old.link!.split('/reset/')[1])).toBeNull(); // expired
   });
 });
+
+describe('first-run setup', () => {
+  it('needs the setup code and an empty database', async () => {
+    const { runSetup, setupAvailable } = await import('./setup');
+    vi.stubEnv('SETUP_CODE', 'correct-setup-code');
+    // The shared test database already has users, so setup must refuse.
+    expect(await setupAvailable()).toBe(false);
+    await expect(runSetup({ code: 'wrong', name: 'A', email: 'a@b.co', businessName: 'X', password: 'long-enough-password' })).rejects.toThrow(/not right/);
+    await expect(runSetup({ code: 'correct-setup-code', name: 'A', email: 'a@b.co', businessName: 'X', password: 'long-enough-password' })).rejects.toThrow(/already completed/);
+    vi.stubEnv('SETUP_CODE', '');
+    expect(await setupAvailable()).toBe(false);
+    vi.unstubAllEnvs();
+  });
+});
