@@ -79,3 +79,30 @@ describe('months', () => {
     expect(log?.payload).toMatchObject({ month: '2026-08', reason: 'Client sent a missed receipt', previouslyClosedThrough: '2026-08-31' });
   });
 });
+
+describe('auto-close after a bank sync', () => {
+  it('closes a finished, fully sorted month once the feed has synced past it', async () => {
+    const { autoCloseMonths } = await import('./months');
+    const uid = (await prisma.user.create({ data: { email: `ac-${Date.now()}@t.local`, name: 'A' } })).id;
+    const biz = (await createBusiness({ userId: uid, name: 'Autoclose Feed Co' })).id;
+    await prisma.business.update({ where: { id: biz }, data: { booksStartDate: new Date('2026-09-01') } });
+    const chk = (await prisma.account.findUniqueOrThrow({ where: { businessId_code: { businessId: biz, code: '1010' } } })).id;
+    const s = (await prisma.account.findUniqueOrThrow({ where: { businessId_code: { businessId: biz, code: '4000' } } })).id;
+    const conn = await prisma.bankConnection.create({
+      data: { businessId: biz, provider: 'plaid', institutionName: 'B', lastSyncAt: new Date('2026-10-01T09:00:00Z'),
+        accounts: { create: { businessId: biz, externalAccountId: 'a', name: 'Chk', currency: 'USD', type: 'depository', ledgerAccountId: chk } } },
+      include: { accounts: true },
+    });
+    const t = await prisma.importedTransaction.create({ data: { businessId: biz, bankAccountLinkId: conn.accounts[0].id, externalId: 'x', date: new Date('2026-09-10'), description: 'SALE', amount: 1000n } });
+    await categorizeTransaction({ businessId: biz, userId: uid, transactionId: t.id, categoryAccountId: s });
+
+    // Synced only 1 day after month end: not yet.
+    let r = await autoCloseMonths(biz, uid, TODAY);
+    expect(r.closed).toEqual([]);
+    expect(r.stoppedAt?.reason).toMatch(/waiting for the full month/);
+    await prisma.bankConnection.update({ where: { id: conn.id }, data: { lastSyncAt: new Date('2026-10-05T09:00:00Z') } });
+    r = await autoCloseMonths(biz, uid, TODAY);
+    expect(r.closed).toEqual(['September 2026']);
+    expect(r.stoppedAt?.month).toBe('October 2026'); // no data for October
+  });
+});

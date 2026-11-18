@@ -33,6 +33,7 @@ export interface SyncResult extends SyncStats {
   /** Kept for callers that only care how many rows arrived. */
   imported: number;
   auto?: AutoStats;
+  closedMonths?: string[];
 }
 
 const MAX_ATTEMPTS = 3;
@@ -229,9 +230,13 @@ export async function syncConnection(opts: {
     if (opts.autoCategorize !== false) {
       try {
         result.auto = await autoCategorize({ businessId: initial.businessId, classifier: opts.classifier });
+        // Close any month that is now complete, fully sorted and covered.
+        const { autoCloseMonths } = await import('@/lib/months');
+        const { systemUserId } = await import('./system-user');
+        result.closedMonths = (await autoCloseMonths(initial.businessId, await systemUserId())).closed;
       } catch (err) {
-        // Import already committed; categorization can run again later.
-        console.warn(`[sync] auto-categorize failed: ${err instanceof Error ? err.message : 'unknown'}`);
+        // Import already committed; categorization/close can run again later.
+        console.warn(`[sync] auto-categorize/close failed: ${err instanceof Error ? err.message : 'unknown'}`);
       }
     }
     return result;
