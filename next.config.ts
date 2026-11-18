@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['pdfkit', 'unpdf'],
   experimental: {
     serverActions: {
+      // Statement uploads (up to 40 PDFs per drop).
+      bodySizeLimit: '50mb',
       // Server Actions verify the browser's Origin against the Host the
       // server sees. Behind a forwarding proxy (GitHub Codespaces, Gitpod)
       // those differ, so form submissions 500 with "Invalid Server Actions

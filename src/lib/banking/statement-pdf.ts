@@ -22,7 +22,9 @@ export interface PdfStatement {
 
 /** Rebuild visual lines (top to bottom, left to right) from a PDF. */
 export async function pdfToLines(data: Uint8Array): Promise<string[]> {
-  const { items } = await extractTextItems(data);
+  // pdf.js takes ownership of (detaches) the buffer it's given; work on a
+  // copy so the caller's bytes stay usable (the inbox reads a file twice).
+  const { items } = await extractTextItems(data.slice());
   const lines: string[] = [];
   for (const page of items) {
     const rows: Array<{ y: number; parts: Array<{ x: number; s: string }> }> = [];
@@ -51,6 +53,7 @@ const MONEY = String.raw`\(?-?\$?\d{1,3}(?:,\d{3})*\.\d{2}\)?-?`;
 // The date may run straight into the description: PDF text extraction can
 // merge adjacent text ("01/06/2027GEICO …").
 const TXN = new RegExp(String.raw`^(\d{1,2}/\d{1,2}(?:/\d{4}|/\d{2}(?!\d))?)(?=\s|[A-Za-z#*])\s*(.+?)\s+(${MONEY})(?:\s+(${MONEY}))?$`);
+const CARD_CREDIT_SECTION = /\bpayments?\s*(?:and|&)\s*(?:other\s+)?credits?\b/i;
 const DEPOSIT_SECTION = /\b(deposits?|credits?|additions|money in)\b/i;
 const WITHDRAWAL_SECTION = /\b(withdrawals?|debits?|checks?( paid)?|fees?|subtractions|purchases|payments|charges|money out)\b/i;
 const OPENING = new RegExp(String.raw`\b(beginning|opening|previous|starting) balance\b.*?(${MONEY})`, 'i');
@@ -103,7 +106,9 @@ export function parseStatementLines(lines: string[], currency: string): PdfState
     if (!m) {
       // A heading switches the section (but not a "Total deposits" line).
       if (!/\btotal\b/i.test(line) && line.length < 60) {
-        if (WITHDRAWAL_SECTION.test(line)) section = -1;
+        // Card statements: "Payments and Credits" is money IN to the card.
+        if (CARD_CREDIT_SECTION.test(line)) section = 1;
+        else if (WITHDRAWAL_SECTION.test(line)) section = -1;
         else if (DEPOSIT_SECTION.test(line)) section = 1;
       }
       continue;

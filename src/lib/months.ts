@@ -113,7 +113,7 @@ export async function monthStatuses(businessId: string, today = new Date()): Pro
   });
 }
 
-export async function closeMonth(opts: { businessId: string; userId: string; month: string; today?: Date }) {
+export async function closeMonth(opts: { businessId: string; userId: string; month: string; today?: Date; auto?: boolean }) {
   const months = await monthStatuses(opts.businessId, opts.today);
   const idx = months.findIndex((m) => m.key === opts.month);
   if (idx < 0) throw new LedgerValidationError('Unknown month.');
@@ -150,7 +150,7 @@ export async function closeMonth(opts: { businessId: string; userId: string; mon
         action: 'month.closed',
         entityType: 'business',
         entityId: opts.businessId,
-        payload: { month: target.key, transactions: target.imported },
+        payload: { month: target.key, transactions: target.imported, ...(opts.auto ? { automatic: true } : {}) },
       },
     }),
   ]);
@@ -202,4 +202,82 @@ export async function reopenMonth(opts: {
       },
     }),
   ]);
+}
+
+// --- Automatic close ------------------------------------------------------------
+
+const DAY = 86400_000;
+
+/**
+ * Is every active account of the business covered through the end of a month?
+ *   statement accounts: uploaded statement periods reach from the month's
+ *     start to its end with no gap (statement cycles needn't match months);
+ *   live bank feeds: last successful sync at least 2 days after month end.
+ * Returns the names of accounts that are not covered.
+ */
+export async function uncoveredAccounts(businessId: string, start: Date, end: Date): Promise<string[]> {
+  const links = await prisma.bankAccountLink.findMany({
+    where: { businessId, connection: { status: { not: 'REMOVED' } } },
+    include: { connection: true },
+  });
+  const missing: string[] = [];
+  for (const l of links) {
+    // Statement accounts are named "<Bank> Card 3333" already; feeds add the account name.
+    const label = l.connection.provider === 'upload' ? l.connection.institutionName : `${l.connection.institutionName} ${l.name}${l.mask ? ` ••${l.mask}` : ''}`;
+    if (l.connection.provider === 'upload') {
+      const ups = await prisma.statementUpload.findMany({
+        where: { bankAccountLinkId: l.id, periodEnd: { gte: start }, periodStart: { lte: end } },
+        orderBy: { periodStart: 'asc' },
+      });
+      let coveredTo = start.getTime() - DAY; // covered through the day before the month
+      for (const u of ups) {
+        if (u.periodStart.getTime() > coveredTo + DAY) break; // gap
+        coveredTo = Math.max(coveredTo, u.periodEnd.getTime());
+      }
+      if (coveredTo < end.getTime()) missing.push(label);
+    } else {
+      const synced = l.connection.lastSyncAt;
+      if (!synced || synced.getTime() < end.getTime() + 2 * DAY || l.connection.status !== 'ACTIVE') missing.push(label);
+    }
+  }
+  if (links.length === 0) missing.push('no bank account connected');
+  return missing;
+}
+
+export interface AutoCloseResult {
+  closed: string[];
+  /** Why the next open month was not closed, if it wasn't. */
+  stoppedAt: { month: string; reason: string } | null;
+}
+
+/**
+ * Close every month that is safe to close, in order, with no person involved:
+ * the next open month is READY (data, nothing unreviewed), has ended, and
+ * every account is covered through its last day. Stops at the first month
+ * that isn't, and says why. Audit-logged as automatic.
+ */
+export async function autoCloseMonths(businessId: string, actorUserId: string, today = new Date()): Promise<AutoCloseResult> {
+  const result: AutoCloseResult = { closed: [], stoppedAt: null };
+  for (let guard = 0; guard < 24; guard++) {
+    const months = await monthStatuses(businessId, today);
+    const next = months.find((m) => m.status !== 'CLOSED');
+    if (!next) return result;
+    if (next.status === 'IN_PROGRESS') return result;
+    if (next.status !== 'READY') {
+      const reason =
+        next.status === 'NEEDS_REVIEW' ? `${next.toReview + next.flagged} transaction(s) need your review`
+        : next.status === 'NO_DATA' ? 'no transactions received for this month'
+        : 'no bank account connected';
+      result.stoppedAt = { month: next.label, reason };
+      return result;
+    }
+    const missing = await uncoveredAccounts(businessId, next.start, next.end);
+    if (missing.length) {
+      result.stoppedAt = { month: next.label, reason: `waiting for the full month from: ${missing.join(', ')}` };
+      return result;
+    }
+    await closeMonth({ businessId, userId: actorUserId, month: next.key, today, auto: true });
+    result.closed.push(next.label);
+  }
+  return result;
 }

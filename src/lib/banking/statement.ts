@@ -148,9 +148,13 @@ export async function importStatement(opts: {
   positiveIsMoneyOut?: boolean;
   /** Existing account to load into… */
   linkId?: string;
-  /** …or a new manual account. */
-  newAccount?: { name: string; kind: 'depository' | 'credit' };
-}): Promise<{ uploadId: string; imported: number; duplicates: number; auto: AutoStats | null }> {
+  /** …or a new manual account (mask = last 4, so later statements match it). */
+  newAccount?: { name: string; kind: 'depository' | 'credit'; mask?: string | null };
+  /** Printed statement period, when known (else first/last transaction date). */
+  period?: { start: string | null; end: string | null };
+  /** Skip the automatic categorization step (the caller runs it). */
+  skipAutoCategorize?: boolean;
+}): Promise<{ uploadId: string; linkId: string; imported: number; duplicates: number; auto: AutoStats | null }> {
   const business = await prisma.business.findUniqueOrThrow({ where: { id: opts.businessId } });
   const currency = business.functionalCurrency;
   let rows: StatementRow[];
@@ -185,10 +189,11 @@ export async function importStatement(opts: {
     const name = opts.newAccount?.name.trim();
     if (!name) throw new LedgerValidationError('Name the account (e.g. "Chase Checking 1234").');
     const created = await prisma.$transaction(async (tx) => {
+      const mask = opts.newAccount?.mask ?? null;
       const ledger = await createFeedLedgerAccount(tx, opts.businessId, currency, name, {
         externalAccountId: 'upload',
         name: kind === 'credit' ? 'Credit Card' : 'Account',
-        mask: null,
+        mask,
         currency,
         type: kind,
         subtype: kind === 'credit' ? 'credit card' : 'checking',
@@ -204,6 +209,7 @@ export async function importStatement(opts: {
               businessId: opts.businessId,
               externalAccountId: 'upload-1',
               name: kind === 'credit' ? 'Credit Card (statements)' : 'Account (statements)',
+              mask,
               currency,
               type: kind,
               subtype: kind === 'credit' ? 'credit card' : 'checking',
@@ -247,8 +253,8 @@ export async function importStatement(opts: {
       businessId: opts.businessId,
       bankAccountLinkId: link.id,
       fileName: opts.fileName.slice(0, 200),
-      periodStart: new Date(sorted[0].date),
-      periodEnd: new Date(sorted[sorted.length - 1].date),
+      periodStart: new Date(opts.period?.start ?? sorted[0].date),
+      periodEnd: new Date(opts.period?.end ?? sorted[sorted.length - 1].date),
       openingBalance: opening,
       closingBalance: closing,
       rowCount: rows.length,
@@ -282,6 +288,6 @@ export async function importStatement(opts: {
       payload: { rows: rows.length, imported: created.count, duplicates: rows.length - created.count },
     },
   });
-  const auto = await autoCategorize({ businessId: opts.businessId }).catch(() => null);
-  return { uploadId: upload.id, imported: created.count, duplicates: rows.length - created.count, auto };
+  const auto = opts.skipAutoCategorize ? null : await autoCategorize({ businessId: opts.businessId }).catch(() => null);
+  return { uploadId: upload.id, linkId: link.id, imported: created.count, duplicates: rows.length - created.count, auto };
 }
