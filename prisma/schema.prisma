@@ -1437,3 +1437,19 @@ model PasswordReset {
   @@index([userId])
   @@map("password_resets")
 }
+
+// In-app chat assistant. `messages` is the exact history sent to the model
+// (already aliased/masked: "Client A", "Contractor 1", no account numbers).
+// `actions` are changes the assistant proposed; nothing runs until a person
+// clicks Approve.
+model AssistantConversation {
+  id        String   @id @default(cuid())
+  userId    String
+  messages  Json     @default("[]")
+  actions   Json     @default("[]")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, updatedAt])
+  @@map("assistant_conversations")
+}

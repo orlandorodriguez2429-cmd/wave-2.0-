@@ -40,6 +40,7 @@ export function SidebarNav() {
     <nav className="px-3 pb-3 space-y-0.5 flex-1 overflow-y-auto">
       <TopLink href="/" label="Dashboard" icon="dashboard" active={pathname === '/'} />
       <TopLink href="/inbox" label="Statement inbox" icon="receipts" active={pathname === '/inbox'} />
+      <TopLink href="/assistant" label="Assistant" icon="advisors" active={pathname === '/assistant'} />
       <TopLink href="/banking" label="Bank accounts" icon="banking" active={pathname === '/banking'} />
       <TopLink href="/close" label="Months" icon="accounting" active={pathname === '/close'} />
       <TopLink

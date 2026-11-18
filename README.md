@@ -23,7 +23,14 @@ Month-to-month bookkeeping for a tax and bookkeeping office's clients:
 6. **Client portal:** each client signs in (two-step verification required)
    and sees only their own business, read-only: dashboard, months, P&L,
    transactions, and their bank connection.
-7. **All clients view** for the office: bank status, last sync, items to
+7. **Statement inbox:** drop a pile of PDF statements (any clients, any
+   months). Each is filed under the right client and account (or a new
+   client is created from the statement), imported if the balances add up,
+   sorted, and finished months close themselves. Only unclear items are left.
+8. **Assistant:** ask in plain English ("what's left for each client?"). It
+   answers from the books and proposes changes you approve. Client and
+   people names never reach the AI.
+9. **All clients view** for the office: bank status, last sync, items to
    review, months not closed, 1099 watch — problems first.
 
 Underneath: real double-entry bookkeeping (integer cents, immutable ledger,
