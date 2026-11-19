@@ -41,7 +41,7 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
           </p>
           {estimate.convertedInvoice && (
             <p className="mt-2 text-sm">
-              <Link href={`/invoices/${estimate.convertedInvoice.id}`} className="text-blue-700 hover:underline">
+              <Link href={`/invoices/${estimate.convertedInvoice.id}`} className="text-teal-700 hover:underline">
                 → Invoice #{estimate.convertedInvoice.number}
               </Link>
             </p>

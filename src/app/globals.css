@@ -1,26 +1,35 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Your Tax Solution brand (from the logo and yourtax-solution.com) */
+  --brand-navy: #20284a;
+  --brand-blue: #2564a4;
+  --brand-sky: #3c90cc;
+  --brand-red: #bd3a49;
+  --background: #f3f5f9;
+  --foreground: #20284a;
+  --wave-navy: #20284a; /* legacy name used across pages */
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* "teal" utilities are the brand blue scale (one place to change the accent) */
+  --color-teal-50: #eef5fc;
+  --color-teal-100: #d6e7f6;
+  --color-teal-200: #aecdec;
+  --color-teal-300: #7cb0df;
+  --color-teal-400: #3c90cc;
+  --color-teal-500: #2f7ab9;
+  --color-teal-600: #2564a4;
+  --color-teal-700: #1d5591;
+  --color-teal-800: #1c4b7a;
+  --color-teal-900: #20284a;
+  --font-sans: 'Poppins', Arial, Helvetica, sans-serif;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Poppins', Arial, Helvetica, sans-serif;
 }

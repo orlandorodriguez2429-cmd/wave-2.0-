@@ -1,9 +1,10 @@
-# Wave 2.0 — one-command local run:
+# Your Tax Solution Books — one-command local trial:
 #
 #   docker compose up
 #
 # then open http://localhost:3000 and sign in as
 #   demo@wave2.local / demo-password-123
+# (you'll set up two-step verification with an authenticator app on first sign-in)
 #
 # The DEV_ONLY encryption key below is fine for trying the app locally.
 # For anything real, override it:  ENCRYPTION_KEY=<32 bytes base64> docker compose up
@@ -29,6 +30,16 @@ services:
     environment:
       DATABASE_URL: postgresql://wave:wave_dev_password@db:5432/wave?schema=public
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-3Jze7fSYxvxXRtj1PWp3e3Mv7Xv7KvXGGzXieeNIFEk=}
+      # Local trial only: runs without Plaid/cron keys and loads demo data.
+      # NEVER set these on a real server (see DEPLOY.md).
+      LOCAL_DEMO: "true"
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      APP_URL: http://localhost:3000
+      # Optional — put these in a file named .env next to this one:
+      PLAID_CLIENT_ID: ${PLAID_CLIENT_ID:-}
+      PLAID_SECRET: ${PLAID_SECRET:-}
+      PLAID_ENV: ${PLAID_ENV:-sandbox}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy

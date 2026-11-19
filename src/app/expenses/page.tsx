@@ -18,7 +18,7 @@ export default async function ExpensesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Expenses</h1>
-        <Link href="/expenses/new" className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+        <Link href="/expenses/new" className="rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700">
           + New expense
         </Link>
       </div>
@@ -43,7 +43,7 @@ export default async function ExpensesPage() {
                 <td className="px-3 py-3 text-slate-500">{e.paymentMethod}</td>
                 <td className="px-3 py-3">
                   {e.receiptFile ? (
-                    <a href={`/receipts/${e.receiptFile.id}`} className="text-blue-700 hover:underline">
+                    <a href={`/receipts/${e.receiptFile.id}`} className="text-teal-700 hover:underline">
                       view
                     </a>
                   ) : (

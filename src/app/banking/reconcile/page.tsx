@@ -52,7 +52,7 @@ export default async function ReconcileListPage() {
             {sessions.map((s) => (
               <tr key={s.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50">
                 <td className="px-5 py-3">
-                  <Link href={`/banking/reconcile/${s.id}`} className="font-medium text-blue-700 hover:underline">
+                  <Link href={`/banking/reconcile/${s.id}`} className="font-medium text-teal-700 hover:underline">
                     {accountName.get(s.ledgerAccountId) ?? 'Account'}
                   </Link>
                 </td>

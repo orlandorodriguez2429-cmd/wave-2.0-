@@ -24,7 +24,7 @@ export default async function AgedReceivablesPage({
           <h1 className="text-2xl font-semibold">Aged Receivables</h1>
           <p className="text-sm text-slate-500 mt-1">
             Open invoice balances as of {asOf} ·{' '}
-            <a href={`/reports/export/aged-receivables?to=${asOf}`} className="text-blue-700 hover:underline">CSV</a>
+            <a href={`/reports/export/aged-receivables?to=${asOf}`} className="text-teal-700 hover:underline">CSV</a>
           </p>
         </div>
         <DateRangeForm to={asOf} toOnly />
@@ -54,7 +54,7 @@ export default async function AgedReceivablesPage({
             {report.rows.map((r) => (
               <tr key={r.invoiceId} className="border-b border-slate-50 last:border-0">
                 <td className="px-5 py-2.5">
-                  <Link href={`/invoices/${r.invoiceId}`} className="text-blue-700 hover:underline">#{r.number}</Link>
+                  <Link href={`/invoices/${r.invoiceId}`} className="text-teal-700 hover:underline">#{r.number}</Link>
                 </td>
                 <td className="px-3 py-2.5">{r.customerName}</td>
                 <td className="px-3 py-2.5 text-slate-500">{r.dueDate}</td>

@@ -20,7 +20,7 @@ export default async function JournalPage() {
         <h1 className="text-2xl font-semibold">Journal</h1>
         <Link
           href="/journal/new"
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          className="rounded-md bg-teal-600 px-4 py-2 text-sm font-medium text-white hover:bg-teal-700"
         >
           + New entry
         </Link>

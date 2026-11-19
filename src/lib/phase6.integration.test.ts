@@ -4,7 +4,8 @@ import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { prisma } from '@/lib/db';
 import { createBusiness } from '@/lib/ledger/business';
 import { createAndPostEntry } from '@/lib/ledger/post';
-import { requireRole, signSession, verifySession, ForbiddenError } from '@/lib/auth';
+import { requireRole, ForbiddenError } from '@/lib/auth';
+import { newSession, sessionIsLive, signToken, verifyToken, STAFF_IDLE_SECONDS, CLIENT_IDLE_SECONDS } from '@/lib/session-core';
 import { generateToken, hashToken, resolveApiToken } from '@/lib/api-auth';
 import { agedReceivables, cashFlow, salesTaxReport } from '@/lib/ledger/more-reports';
 import { approveInvoice, createDraftInvoice } from '@/lib/invoicing/invoices';
@@ -35,18 +36,29 @@ afterAll(async () => {
 });
 
 describe('sessions & roles', () => {
-  it('signed sessions round-trip; tampering and truncation are rejected', () => {
-    const token = signSession({ userId: 'u1', businessId: 'b1' });
-    const payload = verifySession(token);
+  it('signed sessions round-trip; tampering and truncation are rejected', async () => {
+    const token = await signToken(newSession({ userId: 'u1', businessId: 'b1', role: 'OWNER', sv: 1 }));
+    const payload = await verifyToken(token);
     expect(payload?.userId).toBe('u1');
-    expect(payload?.businessId).toBe('b1');
+    expect(sessionIsLive(payload)).toBe(true);
 
-    expect(verifySession(token.slice(0, -2))).toBeNull();
+    expect(await verifyToken(token.slice(0, -2))).toBeNull();
     const [body] = token.split('.');
-    expect(verifySession(`${body}.AAAA`)).toBeNull();
+    expect(await verifyToken(`${body}.AAAA`)).toBeNull();
     // Payload swap with someone else's MAC fails.
-    const other = signSession({ userId: 'attacker', businessId: 'b1' });
-    expect(verifySession(`${other.split('.')[0]}.${token.split('.')[1]}`)).toBeNull();
+    const other = await signToken(newSession({ userId: 'attacker', businessId: 'b1', role: 'OWNER', sv: 1 }));
+    expect(await verifyToken(`${other.split('.')[0]}.${token.split('.')[1]}`)).toBeNull();
+  });
+
+  it('idle timeouts: staff 30 minutes, clients 2 hours; absolute 12 hours', () => {
+    const t0 = 1_800_000_000;
+    const staff = newSession({ userId: 'u', businessId: 'b', role: 'ACCOUNTANT', sv: 1 }, t0);
+    const client = newSession({ userId: 'u', businessId: 'b', role: 'CLIENT', sv: 1 }, t0);
+    expect(sessionIsLive(staff, t0 + STAFF_IDLE_SECONDS)).toBe(true);
+    expect(sessionIsLive(staff, t0 + STAFF_IDLE_SECONDS + 1)).toBe(false);
+    expect(sessionIsLive(client, t0 + STAFF_IDLE_SECONDS + 1)).toBe(true);
+    expect(sessionIsLive(client, t0 + CLIENT_IDLE_SECONDS + 1)).toBe(false);
+    expect(sessionIsLive({ ...staff, lastActive: t0 + 13 * 3600 }, t0 + 13 * 3600)).toBe(false);
   });
 
   it('role floors: employee cannot do accountant work; viewer cannot mutate', () => {

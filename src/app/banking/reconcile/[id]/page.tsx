@@ -69,7 +69,7 @@ export default async function ReconcileDetailPage({ params }: { params: Promise<
       {report.unresolvedCount > 0 && (
         <p className="text-sm text-slate-600">
           {report.unresolvedCount} imported transaction(s) in this period still need review on the{' '}
-          <Link href="/banking" className="text-blue-700 hover:underline">Banking</Link> page. The variance
+          <Link href="/banking" className="text-teal-700 hover:underline">Banking</Link> page. The variance
           updates as you categorize or match them.
         </p>
       )}

@@ -1,61 +1,72 @@
-// Cookie-session auth. The session cookie carries a signed JSON payload
-// (userId + active businessId) — HMAC-SHA256 with a key derived from
-// ENCRYPTION_KEY. No server-side session store needed; membership is
-// re-validated against the DB on every request.
-import { createHmac, timingSafeEqual } from 'node:crypto';
+// Cookie-session auth. The session cookie carries a signed payload (see
+// session-core.ts): user, active business, role, session version and
+// activity timestamps. A full session exists only after password AND MFA.
+// Membership and session version are re-validated against the DB on every
+// request (context.ts), so a revoked member's or rotated cookie is worthless.
 import bcrypt from 'bcryptjs';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/db';
 import type { MembershipRole } from '@/generated/prisma/enums';
+import {
+  cookieOptions,
+  MAX_SESSION_SECONDS,
+  newSession,
+  PENDING_MFA_SECONDS,
+  pendingCookieName,
+  sessionCookieName,
+  sessionIsLive,
+  signToken,
+  verifyToken,
+  type PendingMfaPayload,
+  type SessionPayload,
+} from './session-core';
 
-export const SESSION_COOKIE = 'wave_session';
-const MAX_AGE_SECONDS = 60 * 60 * 24 * 14; // 14 days
+export { sessionCookieName, pendingCookieName };
 
-interface SessionPayload {
-  userId: string;
-  businessId: string;
-  /** Unix seconds. */
-  exp: number;
-}
-
-function signingKey(): Buffer {
-  const raw = process.env.ENCRYPTION_KEY;
-  if (!raw) throw new Error('ENCRYPTION_KEY is not set.');
-  return createHmac('sha256', Buffer.from(raw, 'base64')).update('session-signing').digest();
-}
-
-export function signSession(payload: Omit<SessionPayload, 'exp'>): string {
-  const full: SessionPayload = { ...payload, exp: Math.floor(Date.now() / 1000) + MAX_AGE_SECONDS };
-  const body = Buffer.from(JSON.stringify(full)).toString('base64url');
-  const mac = createHmac('sha256', signingKey()).update(body).digest('base64url');
-  return `${body}.${mac}`;
-}
-
-export function verifySession(token: string): SessionPayload | null {
-  const [body, mac] = token.split('.');
-  if (!body || !mac) return null;
-  const expected = createHmac('sha256', signingKey()).update(body).digest();
-  let actual: Buffer;
-  try {
-    actual = Buffer.from(mac, 'base64url');
-  } catch {
-    return null;
-  }
-  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return null;
-  try {
-    const payload = JSON.parse(Buffer.from(body, 'base64url').toString()) as SessionPayload;
-    if (typeof payload.exp !== 'number' || payload.exp < Date.now() / 1000) return null;
-    if (typeof payload.userId !== 'string' || typeof payload.businessId !== 'string') return null;
-    return payload;
-  } catch {
-    return null;
-  }
-}
-
+/** Live session whose version still matches the user's (else null). */
 export async function readSession(): Promise<SessionPayload | null> {
   const store = await cookies();
-  const token = store.get(SESSION_COOKIE)?.value;
-  return token ? verifySession(token) : null;
+  const payload = await verifyToken(store.get(sessionCookieName())?.value);
+  if (!sessionIsLive(payload)) return null;
+  const user = await prisma.user.findUnique({ where: { id: payload.userId }, select: { sessionVersion: true } });
+  if (!user || user.sessionVersion !== payload.sv) return null;
+  return payload;
+}
+
+/** Kill every existing session of a user (privilege or credential change). */
+export async function rotateSessions(userId: string) {
+  await prisma.user.update({ where: { id: userId }, data: { sessionVersion: { increment: 1 } } });
+}
+
+/** Issue a brand-new session cookie (login, MFA done, business switch). */
+export async function startSession(opts: { userId: string; businessId: string; role: MembershipRole; sv: number }) {
+  const store = await cookies();
+  store.set(sessionCookieName(), await signToken(newSession(opts)), cookieOptions(MAX_SESSION_SECONDS));
+  store.delete(pendingCookieName());
+}
+
+export async function endSession() {
+  const store = await cookies();
+  store.delete(sessionCookieName());
+  store.delete(pendingCookieName());
+}
+
+export async function setPendingMfa(p: Omit<PendingMfaPayload, 'kind' | 'iat' | 'exp'>) {
+  const now = Math.floor(Date.now() / 1000);
+  const store = await cookies();
+  store.delete(sessionCookieName());
+  store.set(
+    pendingCookieName(),
+    await signToken({ kind: 'pending-mfa', ...p, iat: now, exp: now + PENDING_MFA_SECONDS }),
+    cookieOptions(PENDING_MFA_SECONDS),
+  );
+}
+
+export async function readPendingMfa(): Promise<PendingMfaPayload | null> {
+  const store = await cookies();
+  const p = await verifyToken(store.get(pendingCookieName())?.value);
+  if (!p || p.kind !== 'pending-mfa' || p.exp < Date.now() / 1000) return null;
+  return p;
 }
 
 export async function hashPassword(password: string): Promise<string> {
@@ -64,6 +75,13 @@ export async function hashPassword(password: string): Promise<string> {
 
 export async function verifyPassword(password: string, hash: string): Promise<boolean> {
   return bcrypt.compare(password, hash);
+}
+
+let dummyHash: Promise<string> | null = null;
+/** Spend the same time as a real check when the email doesn't exist. */
+export async function burnPasswordCheck(password: string): Promise<void> {
+  dummyHash ??= bcrypt.hash('not-a-real-password', 12);
+  await bcrypt.compare(password, await dummyHash);
 }
 
 export async function authenticate(email: string, password: string) {
@@ -78,11 +96,14 @@ export async function authenticate(email: string, password: string) {
 // EMPLOYEE: create drafts/expenses; cannot post to or reverse the ledger,
 //           approve/void documents, file 1099s, or touch settings.
 // CONTRACTOR_VIEW: read-only.
+// CLIENT: read-only portal for one business; ranks below everything, and is
+// additionally fenced out of every staff route (middleware + context.ts).
 const ROLE_RANK: Record<MembershipRole, number> = {
   OWNER: 3,
   ACCOUNTANT: 2,
   EMPLOYEE: 1,
   CONTRACTOR_VIEW: 0,
+  CLIENT: -1,
 };
 
 export class ForbiddenError extends Error {

@@ -18,27 +18,12 @@ export async function suggestAccount(
   description: string,
   amount: bigint,
 ): Promise<Suggestion | null> {
-  const direction = amount < 0n ? 'OUTFLOW' : 'INFLOW';
   const rules = await prisma.categorizationRule.findMany({
-    where: { businessId, appliesTo: { in: [direction, 'BOTH'] } },
+    where: { businessId },
     orderBy: { priority: 'asc' },
   });
-  const haystack = description.toUpperCase();
-  for (const rule of rules) {
-    if (rule.matchType === 'CONTAINS') {
-      if (haystack.includes(rule.pattern.toUpperCase())) {
-        return { accountId: rule.accountId, ruleId: rule.id, reason: 'rule' };
-      }
-    } else {
-      try {
-        if (new RegExp(rule.pattern, 'i').test(description)) {
-          return { accountId: rule.accountId, ruleId: rule.id, reason: 'rule' };
-        }
-      } catch {
-        // Broken user regex: skip the rule rather than break the import.
-      }
-    }
-  }
+  const rule = matchRule(rules, description, amount);
+  if (rule) return { accountId: rule.accountId, ruleId: rule.id, reason: 'rule' };
 
   const tokens = tokenize(description);
   if (tokens.length === 0) return null;
@@ -70,4 +55,25 @@ function tokenize(s: string): string[] {
     .toUpperCase()
     .split(/[^A-Z]+/)
     .filter((t) => t.length >= 3);
+}
+
+type RuleRow = { id: string; pattern: string; matchType: string; appliesTo: string; accountId: string };
+
+/** First matching business rule (rules must be sorted by priority). */
+export function matchRule<R extends RuleRow>(rules: R[], description: string, amount: bigint): R | null {
+  const direction = amount < 0n ? 'OUTFLOW' : 'INFLOW';
+  const haystack = description.toUpperCase();
+  for (const rule of rules) {
+    if (rule.appliesTo !== 'BOTH' && rule.appliesTo !== direction) continue;
+    if (rule.matchType === 'CONTAINS') {
+      if (haystack.includes(rule.pattern.toUpperCase())) return rule;
+    } else {
+      try {
+        if (new RegExp(rule.pattern, 'i').test(description)) return rule;
+      } catch {
+        // Broken user regex: skip the rule rather than break the import.
+      }
+    }
+  }
+  return null;
 }

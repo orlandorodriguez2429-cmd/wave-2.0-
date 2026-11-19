@@ -44,7 +44,7 @@ describe('bank feed import', () => {
 
     const connection = await connectBank({ businessId, userId, provider: 'mock', ledgerAccountId: checking });
     connectionId = connection.id;
-    const first = await syncConnection({ businessId, userId, connectionId });
+    const first = await syncConnection({ autoCategorize: false, businessId, userId, connectionId });
     expect(first.imported).toBe(8);
 
     const aws = await prisma.importedTransaction.findFirst({
@@ -55,9 +55,9 @@ describe('bank feed import', () => {
   });
 
   it('re-sync is idempotent per batch and advances the cursor', async () => {
-    const second = await syncConnection({ businessId, userId, connectionId });
+    const second = await syncConnection({ autoCategorize: false, businessId, userId, connectionId });
     expect(second.imported).toBe(3); // batch 2
-    const third = await syncConnection({ businessId, userId, connectionId });
+    const third = await syncConnection({ autoCategorize: false, businessId, userId, connectionId });
     expect(third.imported).toBe(0); // no more batches
     expect(await prisma.importedTransaction.count({ where: { businessId } })).toBe(11);
   });

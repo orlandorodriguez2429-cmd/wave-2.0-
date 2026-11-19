@@ -25,7 +25,7 @@ export default async function SalesTaxReportPage({
           <h1 className="text-2xl font-semibold">Sales Tax Report</h1>
           <p className="text-sm text-slate-500 mt-1">
             Collected on approved invoices, {from} → {to} ·{' '}
-            <a href={`/reports/export/sales-tax?from=${from}&to=${to}`} className="text-blue-700 hover:underline">CSV</a>
+            <a href={`/reports/export/sales-tax?from=${from}&to=${to}`} className="text-teal-700 hover:underline">CSV</a>
           </p>
         </div>
         <DateRangeForm from={from} to={to} />

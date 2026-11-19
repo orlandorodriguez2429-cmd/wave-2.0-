@@ -32,7 +32,7 @@ export default async function CashFlowPage({
           <h1 className="text-2xl font-semibold">Cash Flow Statement</h1>
           <p className="text-sm text-slate-500 mt-1">
             {from} → {to} · {cur} ·{' '}
-            <a href={`/reports/export/cash-flow?from=${from}&to=${to}`} className="text-blue-700 hover:underline">CSV</a>
+            <a href={`/reports/export/cash-flow?from=${from}&to=${to}`} className="text-teal-700 hover:underline">CSV</a>
           </p>
         </div>
         <DateRangeForm from={from} to={to} />
