@@ -90,8 +90,23 @@ export class PlaidProvider implements BankFeedProvider {
  * repair a broken login. `clientUserId` is our internal user id, never an
  * email or name.
  */
-export async function createLinkToken(opts: { clientUserId: string; accessToken?: string }): Promise<string> {
+/**
+ * OAuth return page for banks that sign in on their own site (Chase, Bank of
+ * America, Wells Fargo, …), needed on phones. Only sent when
+ * PLAID_OAUTH_REDIRECT=true, because Plaid refuses any redirect URI that is
+ * not registered in its dashboard (Developers → API → Allowed redirect URIs):
+ * register both  <APP_URL>/plaid-oauth  and  <APP_URL>/client/plaid-oauth.
+ */
+export function oauthRedirectUri(audience: 'staff' | 'client', env: Record<string, string | undefined> = process.env): string | undefined {
+  if (env.PLAID_OAUTH_REDIRECT !== 'true') return undefined;
+  const base = (env.APP_URL ?? '').replace(/\/+$/, '');
+  if (!base.startsWith('https://')) return undefined;
+  return `${base}${audience === 'client' ? '/client' : ''}/plaid-oauth`;
+}
+
+export async function createLinkToken(opts: { clientUserId: string; accessToken?: string; audience?: 'staff' | 'client' }): Promise<string> {
   const config = plaidConfig();
+  const redirectUri = oauthRedirectUri(opts.audience ?? 'staff');
   try {
     const { data } = await plaidClient().linkTokenCreate({
       client_name: CLIENT_NAME,
@@ -99,6 +114,7 @@ export async function createLinkToken(opts: { clientUserId: string; accessToken?
       country_codes: [CountryCode.Us],
       user: { client_user_id: opts.clientUserId },
       webhook: config?.webhookUrl ?? undefined,
+      ...(redirectUri ? { redirect_uri: redirectUri } : {}),
       ...(opts.accessToken
         ? { access_token: opts.accessToken }
         : { products: [Products.Transactions], transactions: { days_requested: DAYS_REQUESTED } }),

@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePlaidLink } from 'react-plaid-link';
+import { rememberLinkSession } from './plaid-oauth-store';
 import { createLinkTokenAction, exchangePublicTokenAction, markReconnectedAction } from '@/app/banking-actions';
 import {
   clientCreateLinkTokenAction,
@@ -14,7 +15,7 @@ import {
   clientMarkReconnectedAction,
 } from '@/app/client-actions';
 
-const ACTIONS = {
+export const ACTIONS = {
   staff: { create: createLinkTokenAction, exchange: exchangePublicTokenAction, reconnected: markReconnectedAction },
   client: { create: clientCreateLinkTokenAction, exchange: clientExchangePublicTokenAction, reconnected: clientMarkReconnectedAction },
 };
@@ -64,10 +65,14 @@ export function PlaidLinkButton({
     },
   });
 
-  // Open Link as soon as a fresh token is ready.
+  // Open Link as soon as a fresh token is ready. Remember it for the OAuth
+  // return page (banks that sign in on their own site, mainly on phones).
   useEffect(() => {
-    if (linkToken && ready) open();
-  }, [linkToken, ready, open]);
+    if (linkToken && ready) {
+      rememberLinkSession({ linkToken, audience, reconnectConnectionId: reconnectConnectionId ?? null, returnTo: window.location.pathname });
+      open();
+    }
+  }, [linkToken, ready, open, audience, reconnectConnectionId]);
 
   const start = () => {
     setError(null);

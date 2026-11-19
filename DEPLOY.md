@@ -128,6 +128,21 @@ The webhook URL is sent to Plaid with every Link session, from
 `user_good` / `pass_good`, then check the business's audit log for
 `bank_connection.webhook` entries.
 
+### 5b. Going live with real banks (Plaid production)
+
+1. Plaid dashboard → **Get full access**: company profile, product
+   **Transactions**, security questionnaire (answers in SECURITY.md), billing.
+2. After approval, request OAuth access for the big banks (Chase, Bank of
+   America, Wells Fargo, Capital One, …) in the Plaid dashboard.
+3. Plaid dashboard → **Developers → API → Allowed redirect URIs**: add
+   `https://<your address>/plaid-oauth` and
+   `https://<your address>/client/plaid-oauth`. Then set
+   `PLAID_OAUTH_REDIRECT=true` on Render (needed on phones for OAuth banks).
+4. Render → Environment: `PLAID_ENV=production`, `PLAID_SECRET` = the
+   **production** secret. Save, rebuild and deploy.
+5. Before real client data: paid database plan with backups, and
+   `REQUIRE_MFA=true`.
+
 ### 6. Daily sync
 
 GitHub Actions (`.github/workflows/daily-sync.yml`) runs

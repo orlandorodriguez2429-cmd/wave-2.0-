@@ -33,6 +33,8 @@ services:
         value: "false"
       - key: PLAID_ENV # sandbox until Plaid approves production
         value: sandbox
+      - key: PLAID_OAUTH_REDIRECT # "true" after registering <APP_URL>/plaid-oauth and <APP_URL>/client/plaid-oauth in Plaid
+        value: "false"
       - key: PLAID_WEBHOOK_URL # https://<your domain>/api/plaid/webhook
         sync: false
       - key: ANTHROPIC_API_KEY

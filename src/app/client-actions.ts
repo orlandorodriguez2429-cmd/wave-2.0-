@@ -27,7 +27,7 @@ export async function clientCreateLinkTokenAction(reconnectConnectionId?: string
       }
       accessToken = decryptSecret(c.accessTokenEncrypted);
     }
-    return { linkToken: await createLinkToken({ clientUserId: user.id, accessToken }) };
+    return { linkToken: await createLinkToken({ clientUserId: user.id, accessToken, audience: 'client' }) };
   } catch (err) {
     return msg(err);
   }
