@@ -30,7 +30,6 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
               {found.existingUser ? ' Enter your existing password to accept.' : ' Choose a password to finish.'}
             </p>
             <AcceptInviteForm token={token} existingUser={!!found.existingUser} minLength={MIN_PASSWORD_LENGTH} />
-            <p className="text-xs text-slate-400">Next you&apos;ll set up two-step verification with an authenticator app.</p>
           </>
         )}
       </div>

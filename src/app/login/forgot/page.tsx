@@ -8,7 +8,7 @@ export default function ForgotPage() {
         <div>
           <BrandMark />
         <h1 className="text-xl font-semibold text-[var(--brand-navy)]">Reset your password</h1>
-          <p className="text-sm text-slate-500 mt-1">We&apos;ll email you a link. You&apos;ll still need your two-step code to sign in.</p>
+          <p className="text-sm text-slate-500 mt-1">We&apos;ll email you a link.</p>
         </div>
         <ForgotForm />
         <a href="/login" className="block text-xs text-slate-500 hover:underline">Back to sign in</a>

@@ -8,7 +8,7 @@ export default async function ClientAccount() {
   return (
     <div className="space-y-4 max-w-3xl">
       <h1 className="text-2xl font-semibold">Your account</h1>
-      <p className="text-sm text-slate-500">Signed in as {user.email}. Two-step verification is on.</p>
+      <p className="text-sm text-slate-500">Signed in as {user.email}.</p>
       <ChangePasswordForm />
     </div>
   );

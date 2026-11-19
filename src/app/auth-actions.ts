@@ -34,12 +34,37 @@ async function clientIp(): Promise<string> {
 const GENERIC_LOGIN_ERROR = 'Invalid email or password.';
 const TOO_MANY = 'Too many attempts. Wait 15 minutes and try again.';
 
+/**
+ * Two-step verification is optional unless REQUIRE_MFA=true. Someone who
+ * turned it on for their own login is always asked for a code.
+ */
+function mfaRequired(): boolean {
+  return process.env.REQUIRE_MFA === 'true';
+}
+
+/** After a correct password (or setup / accepted invite): code step, or straight in. */
+async function continueSignIn(userId: string, businessId?: string): Promise<never> {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  if (user.mfaEnabledAt || mfaRequired()) {
+    await setPendingMfa({ userId, stage: user.mfaEnabledAt ? 'verify' : 'enroll', businessId });
+    redirect('/login/mfa');
+  }
+  await recordSuccess(userId);
+  const m = await membershipFor(userId, businessId);
+  if (!m) redirect('/login');
+  await startSession({ userId, businessId: m.businessId, role: m.role, sv: user.sessionVersion });
+  await prisma.auditLog.create({
+    data: { businessId: m.businessId, userId, action: 'auth.login', entityType: 'user', entityId: userId, payload: { mfa: 'off', ip: await clientIp() } },
+  });
+  redirect(m.role === 'CLIENT' ? '/client' : '/');
+}
+
 async function membershipFor(userId: string, preferBusinessId?: string) {
   const memberships = await prisma.membership.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } });
   return memberships.find((m) => m.businessId === preferBusinessId) ?? memberships[0] ?? null;
 }
 
-/** Step 1: password. A full session is only created after the MFA step. */
+/** Step 1: password. Then the code step if two-step is on for this login. */
 export async function loginAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const email = String(formData.get('email') ?? '').trim().toLowerCase();
   const password = String(formData.get('password') ?? '');
@@ -59,8 +84,7 @@ export async function loginAction(_prev: ActionResult, formData: FormData): Prom
     return { error: GENERIC_LOGIN_ERROR };
   }
   if (!(await membershipFor(user.id))) return { error: 'This account has no access to any business.' };
-  await setPendingMfa({ userId: user.id, stage: user.mfaEnabledAt ? 'verify' : 'enroll' });
-  redirect('/login/mfa');
+  return continueSignIn(user.id);
 }
 
 /** Step 2a: code from the authenticator app, or a backup code. */
@@ -177,8 +201,7 @@ export async function acceptInviteAction(token: string, _prev: ActionResult, for
     if (err instanceof InviteError) return { error: err.message };
     throw err;
   }
-  await setPendingMfa({ userId: result.userId, stage: result.mfaEnabled ? 'verify' : 'enroll', businessId: result.businessId });
-  redirect('/login/mfa');
+  return continueSignIn(result.userId, result.businessId);
 }
 
 /** Owner resets a member's MFA (lost phone). Their sessions end; they re-enroll at next login. */
@@ -354,6 +377,5 @@ export async function setupAction(_prev: ActionResult, formData: FormData): Prom
     if (err instanceof SetupError) return { error: err.message };
     throw err;
   }
-  await setPendingMfa({ userId: result.userId, stage: 'enroll', businessId: result.businessId });
-  redirect('/login/mfa');
+  return continueSignIn(result.userId, result.businessId);
 }

@@ -33,7 +33,6 @@ export function SetupForm() {
       <button disabled={pending} className="w-full rounded-md bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50">
         {pending ? '…' : 'Create my account'}
       </button>
-      <p className="text-xs text-slate-400">Next you&apos;ll set up two-step verification with an authenticator app.</p>
     </form>
   );
 }

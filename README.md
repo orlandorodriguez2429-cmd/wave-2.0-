@@ -20,7 +20,7 @@ Month-to-month bookkeeping for a tax and bookkeeping office's clients:
 4. **Profit & Loss** any month, quarter or year, with PDF/CSV export.
 5. **1099s:** W-9 collection, payment tracking with thresholds, form
    generation and e-file behind an explicit human "Submit to IRS" step.
-6. **Client portal:** each client signs in (two-step verification required)
+6. **Client portal:** each client signs in (two-step verification optional, `REQUIRE_MFA=true` to require it)
    and sees only their own business, read-only: dashboard, months, P&L,
    transactions, and their bank connection.
 7. **Statement inbox:** drop a pile of PDF statements (any clients, any
@@ -46,8 +46,7 @@ Requirements: Node 20+, PostgreSQL 14+ (or just Docker).
 docker compose up
 ```
 
-Open http://localhost:3000, sign in as `demo@wave2.local` / `demo-password-123`,
-and set up two-step verification with any authenticator app.
+Open http://localhost:3000, sign in as `demo@wave2.local` / `demo-password-123`.
 
 **Without Docker:**
 

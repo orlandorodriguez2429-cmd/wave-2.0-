@@ -29,6 +29,8 @@ services:
         sync: false
       - key: PLAID_SECRET
         sync: false
+      - key: REQUIRE_MFA # "true" = two-step verification for every login (off for now)
+        value: "false"
       - key: PLAID_ENV # sandbox until Plaid approves production
         value: sandbox
       - key: PLAID_WEBHOOK_URL # https://<your domain>/api/plaid/webhook

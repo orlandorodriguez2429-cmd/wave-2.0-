@@ -88,8 +88,7 @@ export default async function TeamPage() {
         )}
         <p className="text-xs text-slate-400">
           Roles: owner (everything) · accountant (all bookkeeping incl. 1099 filing) · employee (drafts and
-          expenses only, cannot post to the ledger) · view only · client (portal only, invited below). Everyone signs
-          in with two-step verification.
+          expenses only, cannot post to the ledger) · view only · client (portal only, invited below).
         </p>
       </section>
 

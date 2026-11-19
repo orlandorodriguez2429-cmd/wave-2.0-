@@ -55,8 +55,14 @@ never in the repository. Ciphertext is versioned (`v1:`) to allow rotation.
 
 ## 3. Authentication
 
-- **Two-step verification (TOTP, RFC 6238) is required for every login** —
-  staff and clients. A full session only exists after the second step.
+- **Two-step verification (TOTP, RFC 6238)** is **off by default** and is
+  required for every login (staff and clients) only when the server has
+  `REQUIRE_MFA=true`. A login that has set it up is always asked for a code.
+  **Note:** the FTC Safeguards Rule (16 CFR 314.4(c)(5)) requires
+  multi-factor authentication for anyone accessing customer information, and
+  Plaid's security review asks about it — set `REQUIRE_MFA=true` before
+  real client data is in the system. With it on, a full session only exists
+  after the second step.
   Codes cannot be replayed. Ten one-time backup codes are issued at setup.
   An owner can reset a member's two-step (lost phone), which ends that
   member's sessions.
