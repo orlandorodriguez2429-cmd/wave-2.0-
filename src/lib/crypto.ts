@@ -2,15 +2,31 @@
 // Phase 4). Key comes from ENCRYPTION_KEY: 32 bytes, base64. Ciphertext format
 // "v1:<iv b64>:<tag b64>:<data b64>" so the scheme can rotate later.
 // NEVER log plaintext or ciphertext; redact in errors.
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+
+/**
+ * The 32-byte AES key. Preferred: ENCRYPTION_KEY = 32 random bytes, base64.
+ * Also accepted: any random string of at least 32 characters (e.g. the value
+ * from a hosting dashboard's "Generate" button), hashed with SHA-256 to 32
+ * bytes. Returns null if the value is unusable.
+ */
+export function encryptionKeyBytes(raw: string | undefined): Buffer | null {
+  if (!raw) return null;
+  if (/^[A-Za-z0-9+/]+={0,2}$/.test(raw)) {
+    const buf = Buffer.from(raw, 'base64');
+    if (buf.length === 32) return buf;
+  }
+  if (raw.length >= 32) return createHash('sha256').update(raw, 'utf8').digest();
+  return null;
+}
 
 function key(): Buffer {
   const raw = process.env.ENCRYPTION_KEY;
   if (!raw) {
     throw new Error('ENCRYPTION_KEY is not set (32 random bytes, base64). Refusing to store secrets.');
   }
-  const buf = Buffer.from(raw, 'base64');
-  if (buf.length !== 32) throw new Error('ENCRYPTION_KEY must decode to exactly 32 bytes.');
+  const buf = encryptionKeyBytes(raw);
+  if (!buf) throw new Error('ENCRYPTION_KEY must be 32 random bytes (base64) or a random string of at least 32 characters.');
   return buf;
 }
 

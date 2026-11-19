@@ -20,6 +20,7 @@ describe('productionEnvProblems', () => {
   });
   it('refuses a short key and the public dev key', () => {
     expect(productionEnvProblems({ ...good, ENCRYPTION_KEY: 'c2hvcnQ=' })[0]).toMatch(/32 random bytes/);
+    expect(productionEnvProblems({ ...good, ENCRYPTION_KEY: '7b175d88325f651ed9dd7f9df76ccffa' })).toEqual([]); // dashboard "Generate" style
     expect(productionEnvProblems({ ...good, ENCRYPTION_KEY: '3Jze7fSYxvxXRtj1PWp3e3Mv7Xv7KvXGGzXieeNIFEk=' })[0]).toMatch(/public development key/);
   });
   it('LOCAL_DEMO allows running without Plaid/cron, but still needs a real key', () => {

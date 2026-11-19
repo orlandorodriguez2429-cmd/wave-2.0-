@@ -5,14 +5,11 @@ export function productionEnvProblems(env: Record<string, string | undefined> = 
   if (env.NODE_ENV !== 'production') return [];
   const problems: string[] = [];
   const key = env.ENCRYPTION_KEY ?? '';
-  let keyBytes = 0;
-  try {
-    keyBytes = Buffer.from(key, 'base64').length;
-  } catch {
-    keyBytes = 0;
-  }
+  // Same rule as encryptionKeyBytes() in crypto.ts: 32 bytes base64, or a
+  // random string of at least 32 characters.
+  const base64Ok = /^[A-Za-z0-9+/]+={0,2}$/.test(key) && Buffer.from(key, 'base64').length === 32;
   if (!key) problems.push('ENCRYPTION_KEY is not set.');
-  else if (keyBytes !== 32) problems.push('ENCRYPTION_KEY must be 32 random bytes, base64-encoded.');
+  else if (!base64Ok && key.length < 32) problems.push('ENCRYPTION_KEY must be 32 random bytes, base64-encoded (or a random string of at least 32 characters).');
   else if (key === '3Jze7fSYxvxXRtj1PWp3e3Mv7Xv7KvXGGzXieeNIFEk=' && env.LOCAL_DEMO !== 'true') {
     problems.push('ENCRYPTION_KEY is the public development key from docker-compose.yml. Generate your own.');
   }
