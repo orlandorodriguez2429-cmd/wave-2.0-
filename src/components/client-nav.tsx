@@ -17,10 +17,13 @@ export function ClientNav({ businessName, userName }: { businessName: string; us
   const pathname = usePathname();
   const [pending, start] = useTransition();
   return (
-    <header className="bg-[#0e2438] text-white">
+    <header className="bg-[var(--brand-navy)] text-white">
       <div className="mx-auto max-w-5xl px-4 sm:px-8 py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
         <div className="flex items-center gap-2 mr-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-teal-500 text-[#0e2438] font-bold text-xs">YT</span>
+          <span className="flex items-center rounded-md bg-white p-1">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/yts-logo.jpg" alt="Your Tax Solution" width={30} height={33} className="h-8 w-auto" />
+          </span>
           <div className="leading-tight">
             <p className="text-sm font-semibold">{businessName}</p>
             <p className="text-[11px] text-slate-400">Your Tax Solution · client portal</p>

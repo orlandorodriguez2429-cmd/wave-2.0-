@@ -101,7 +101,7 @@ function TopLink({ href, label, icon, badge, small, active }: Item & { icon?: Na
       href={href}
       className={`flex items-center gap-2.5 rounded-md px-3 py-1.5 ${
         small ? 'text-[13px]' : 'text-sm'
-      } font-medium ${active ? 'bg-[#16324a] text-white' : 'text-slate-300'} hover:bg-white/10 hover:text-white border-l-2 ${
+      } font-medium ${active ? 'bg-white/10 text-white' : 'text-slate-300'} hover:bg-white/10 hover:text-white border-l-2 ${
         active ? 'border-teal-400' : 'border-transparent'
       } hover:border-teal-400`}
     >

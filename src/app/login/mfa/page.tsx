@@ -5,6 +5,7 @@ import { readPendingMfa } from '@/lib/auth';
 import { enrollmentSecret } from '@/lib/mfa';
 import { otpauthUrl } from '@/lib/totp';
 import { ContinueButton, MfaVerifyForm, MfaEnrollForm } from './mfa-forms';
+import { BrandMark } from '@/components/brand-mark';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,7 +52,8 @@ function Shell({ title, subtitle, children }: { title: string; subtitle: string;
     <div className="fixed inset-0 flex items-center justify-center bg-slate-100 overflow-y-auto py-8">
       <div className="w-full max-w-md space-y-5 rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
         <div>
-          <h1 className="text-xl font-semibold text-teal-700">{title}</h1>
+          <BrandMark />
+        <h1 className="text-xl font-semibold text-[var(--brand-navy)]">{title}</h1>
           <p className="text-sm text-slate-500 mt-1">{subtitle}</p>
         </div>
         {children}

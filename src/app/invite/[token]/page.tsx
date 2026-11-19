@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { findInvite, MIN_PASSWORD_LENGTH } from '@/lib/invites';
 import { AcceptInviteForm } from './accept-form';
+import { BrandMark } from '@/components/brand-mark';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,8 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-slate-100">
       <div className="w-full max-w-sm space-y-5 rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-        <h1 className="text-xl font-semibold text-teal-700">Your Tax Solution Books</h1>
+        <BrandMark />
+        <h1 className="text-xl font-semibold text-[var(--brand-navy)]">Your Tax Solution Books</h1>
         {!found.invite || !business ? (
           <p className="text-sm text-slate-600">{PROBLEMS[found.problem ?? 'invalid']}</p>
         ) : (

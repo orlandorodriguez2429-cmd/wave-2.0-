@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { readSession } from '@/lib/auth';
 import { setupAvailable } from '@/lib/setup';
 import { LoginForm } from './login-form';
+import { BrandMark } from '@/components/brand-mark';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,8 +14,9 @@ export default async function LoginPage() {
     <div className="fixed inset-0 flex items-center justify-center bg-slate-100">
       <div className="w-full max-w-sm space-y-6 rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
         <div>
-          <h1 className="text-xl font-semibold text-teal-700">Your Tax Solution Books</h1>
-          <p className="text-sm text-slate-500 mt-1">Sign in to your books.</p>
+          <BrandMark />
+        <h1 className="text-xl font-semibold text-[var(--brand-navy)]">Sign in to your books</h1>
+          <p className="text-sm text-slate-500 mt-1">Monthly books, Profit &amp; Loss and 1099s.</p>
         </div>
         <LoginForm />
         <p className="text-xs text-slate-400">

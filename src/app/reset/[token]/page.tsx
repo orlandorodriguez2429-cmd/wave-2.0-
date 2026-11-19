@@ -1,5 +1,6 @@
 import { checkResetToken } from '@/lib/password-reset';
 import { ResetForm } from './reset-form';
+import { BrandMark } from '@/components/brand-mark';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +10,8 @@ export default async function ResetPage({ params }: { params: Promise<{ token: s
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-slate-100">
       <div className="w-full max-w-sm space-y-5 rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-        <h1 className="text-xl font-semibold text-teal-700">Choose a new password</h1>
+        <BrandMark />
+        <h1 className="text-xl font-semibold text-[var(--brand-navy)]">Choose a new password</h1>
         {valid ? (
           <ResetForm token={token} />
         ) : (

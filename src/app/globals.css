@@ -1,32 +1,35 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f4f6f8;
-  --foreground: #172b4d;
-  --wave-teal: #00cd98;
-  --wave-teal-dark: #00a97e;
-  --wave-navy: #172b4d;
+  /* Your Tax Solution brand (from the logo and yourtax-solution.com) */
+  --brand-navy: #20284a;
+  --brand-blue: #2564a4;
+  --brand-sky: #3c90cc;
+  --brand-red: #bd3a49;
+  --background: #f3f5f9;
+  --foreground: #20284a;
+  --wave-navy: #20284a; /* legacy name used across pages */
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-teal-50: #e6fbf4;
-  --color-teal-100: #c2f5e3;
-  --color-teal-200: #8fe9cc;
-  --color-teal-300: #57dbb3;
-  --color-teal-400: #22cf9c;
-  --color-teal-500: #00cd98;
-  --color-teal-600: #00a97e;
-  --color-teal-700: #018768;
-  --color-teal-800: #056a54;
-  --color-teal-900: #075846;
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* "teal" utilities are the brand blue scale (one place to change the accent) */
+  --color-teal-50: #eef5fc;
+  --color-teal-100: #d6e7f6;
+  --color-teal-200: #aecdec;
+  --color-teal-300: #7cb0df;
+  --color-teal-400: #3c90cc;
+  --color-teal-500: #2f7ab9;
+  --color-teal-600: #2564a4;
+  --color-teal-700: #1d5591;
+  --color-teal-800: #1c4b7a;
+  --color-teal-900: #20284a;
+  --font-sans: 'Poppins', Arial, Helvetica, sans-serif;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  font-family: 'Poppins', Arial, Helvetica, sans-serif;
 }

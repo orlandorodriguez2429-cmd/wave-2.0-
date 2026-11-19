@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import PDFDocument from 'pdfkit';
 import { formatMoney } from '@/lib/money';
 import type { profitAndLoss } from '@/lib/ledger/reports';
@@ -12,19 +14,24 @@ export async function renderPnlPdf(opts: { businessName: string; periodLabel: st
   doc.on('data', (c: Buffer) => chunks.push(c));
   const done = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
 
-  doc.fontSize(18).font('Helvetica-Bold').text(opts.businessName);
-  doc.fontSize(13).font('Helvetica').text('Profit & Loss');
+  // Your Tax Solution branding: logo top-right, navy titles.
+  const logo = path.join(process.cwd(), 'public', 'brand', 'yts-logo.jpg');
+  if (existsSync(logo)) doc.image(logo, 500, 40, { width: 58 });
+  doc.fontSize(18).font('Helvetica-Bold').fillColor('#20284a').text(opts.businessName, 54, 54, { width: 430 });
+  doc.fontSize(13).font('Helvetica').fillColor('#2564a4').text('Profit & Loss');
   doc.fontSize(10).fillColor('#555555').text(`${opts.periodLabel} · ${opts.basis} basis`).fillColor('#000000');
-  doc.moveDown(1);
+  doc.y = Math.max(doc.y, 110) + 14; // below the logo
 
   const left = 54;
   const right = 558;
   const row = (label: string, amount: string, bold = false, indent = 0) => {
     const y = doc.y;
     doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(10);
-    doc.text(label, left + indent, y, { width: 360 });
-    doc.text(amount, right - 150, y, { width: 150, align: 'right' });
-    doc.moveDown(0.3);
+    doc.text(label, left + indent, y, { width: 360, lineBreak: false });
+    if (amount) doc.text(amount, right - 150, y, { width: 150, align: 'right', lineBreak: false });
+    // Advance explicitly: an empty/one-line cell must not leave doc.y behind.
+    doc.y = y + 15;
+    doc.x = left;
   };
   const line = () => {
     doc.moveTo(left, doc.y).lineTo(right, doc.y).strokeColor('#cccccc').stroke();
@@ -47,7 +54,7 @@ export async function renderPnlPdf(opts: { businessName: string; periodLabel: st
   row('Net Income', formatMoney(pnl.netIncome, currency), true);
 
   doc.moveDown(2);
-  doc.fontSize(8).fillColor('#888888').text(`Generated ${new Date().toISOString().slice(0, 10)} by Your Tax Solution Books.`);
+  doc.fontSize(8).fillColor('#888888').text(`Prepared by Your Tax Solution · ${new Date().toISOString().slice(0, 10)}`, left, doc.y, { width: right - left });
   doc.end();
   return done;
 }
