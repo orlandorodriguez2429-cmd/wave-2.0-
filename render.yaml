@@ -1,11 +1,16 @@
 # Render Blueprint for Your Tax Solution Books (see DEPLOY.md).
-# Plan names change over time — check them in the Render dashboard when you
-# apply this file, and pick a Postgres plan that includes backups.
+#
+# FREE setup: free web service (sleeps after ~15 min idle, first visit then
+# takes about a minute) and a free Postgres database. Render's free database
+# EXPIRES after about 30 days and has NO backups — before real client data
+# goes in, upgrade it in the dashboard (the data is kept when you upgrade).
+# The daily backstop sync runs from GitHub Actions (.github/workflows/
+# daily-sync.yml) because Render cron jobs are not free.
 services:
   - type: web
     name: yts-books
     runtime: docker
-    plan: starter
+    plan: free
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
@@ -43,23 +48,9 @@ services:
       - key: SMTP_FROM
         sync: false
 
-  - type: cron
-    name: yts-books-daily-sync
-    runtime: node
-    schedule: "17 10 * * *" # every day 10:17 UTC (early morning US)
-    buildCommand: echo "no build needed"
-    startCommand: node scripts/cron-sync.mjs
-    envVars:
-      - key: APP_URL
-        sync: false
-      - key: CRON_SECRET
-        fromService:
-          type: web
-          name: yts-books
-          envVarKey: CRON_SECRET
-
 databases:
   - name: yts-books-db
     databaseName: books
     user: books
+    plan: free
     postgresMajorVersion: "16"
