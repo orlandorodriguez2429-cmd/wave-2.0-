@@ -42,6 +42,7 @@ export function isPublicPath(path: string): boolean {
 
 /** Which signed-in roles may open a path. */
 export function allowedFor(role: string, path: string): boolean {
+  if (path === '/consent') return true; // privacy notice + terms, both roles
   const portal = path === '/client' || path.startsWith('/client/');
   return role === 'CLIENT' ? portal : !portal;
 }

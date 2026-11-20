@@ -111,7 +111,9 @@ export default async function BankingPage() {
         <div className="rounded-lg border border-slate-200 bg-white px-5 py-4 flex items-center justify-between gap-4">
           <p className="text-sm text-slate-500">
             Connect a checking, savings or credit card account through Plaid. The bank login happens in
-            Plaid&apos;s window; this app never sees or stores bank usernames or passwords.
+            Plaid&apos;s window; this app never sees or stores bank usernames or passwords. Connect a client&apos;s
+            account only with the client&apos;s authorization (engagement letter or their own portal consent) — better,
+            invite them to connect it themselves from their portal.
             {webhookMissing && (
               <span className="block text-amber-700 mt-1">
                 PLAID_WEBHOOK_URL is not set, so new transactions only arrive when you press Sync now.

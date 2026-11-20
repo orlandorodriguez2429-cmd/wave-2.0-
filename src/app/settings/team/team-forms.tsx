@@ -79,6 +79,10 @@ export function DeleteBusinessForm({ name }: { name: string }) {
         contractors/W-9s, 1099s and audit log. A deletion record (who, when, counts) is kept. <strong>Export anything you are
         required to keep first</strong> (e.g. filed 1099 copies and records supporting a filed return).
       </p>
+      <label className="flex items-start gap-2 text-sm text-slate-700">
+        <input type="checkbox" name="retentionConfirmed" className="mt-1" />
+        <span>Its records are more than 7 years old, or I have exported them and they are kept elsewhere for the full 7 years.</span>
+      </label>
       <div className="flex flex-wrap items-end gap-3">
         <label className="block">
           <span className="block text-xs font-medium text-slate-500 mb-1">Type the business name to confirm</span>

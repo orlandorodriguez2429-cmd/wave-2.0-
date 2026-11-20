@@ -4,6 +4,7 @@ import { hit } from '@/lib/rate-limit';
 import { prisma } from '@/lib/db';
 import { readSession, requireRole } from '@/lib/auth';
 import type { MembershipRole } from '@/generated/prisma/enums';
+import { needsConsent } from '@/lib/legal';
 
 export interface AppContext {
   user: { id: string; email: string; name: string };
@@ -20,6 +21,8 @@ async function loadSession() {
     include: { memberships: { include: { business: true }, orderBy: { createdAt: 'asc' } } },
   });
   if (!user || user.memberships.length === 0) redirect('/login');
+  // Privacy notice + terms must be accepted (current version) before any data.
+  if (needsConsent(user)) redirect('/consent');
   return { session, user };
 }
 

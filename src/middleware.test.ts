@@ -24,7 +24,8 @@ function routes(dir: string, base = ''): string[] {
 const ALL = routes(path.join(__dirname, 'app'));
 const PORTAL = ALL.filter((r) => r === '/client' || r.startsWith('/client/'));
 const PUBLIC = ALL.filter((r) => isPublicPath(r));
-const STAFF = ALL.filter((r) => !PORTAL.includes(r) && !PUBLIC.includes(r));
+const SHARED = ['/consent']; // privacy notice + terms acceptance: any signed-in role
+const STAFF = ALL.filter((r) => !PORTAL.includes(r) && !PUBLIC.includes(r) && !SHARED.includes(r));
 
 async function request(p: string, role: 'CLIENT' | 'OWNER' | null, opts: { idle?: boolean; method?: string } = {}) {
   const headers: Record<string, string> = {};
@@ -57,6 +58,11 @@ describe('CLIENT session', () => {
   });
   it.each(PORTAL)('may open portal route %s', async (p) => {
     expect(passes(await request(p, 'CLIENT'))).toBe(true);
+  });
+  it('may open the consent page (privacy notice + terms)', async () => {
+    expect(passes(await request('/consent', 'CLIENT'))).toBe(true);
+    expect(passes(await request('/consent', 'OWNER'))).toBe(true);
+    expect((await request('/consent', null)).status).toBe(307);
   });
   it('is sent from / to the portal', async () => {
     const r = await request('/', 'CLIENT');

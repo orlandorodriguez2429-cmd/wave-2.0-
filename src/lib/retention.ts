@@ -17,6 +17,12 @@ export async function deleteBusiness(opts: {
   businessId: string;
   userId: string;
   confirmName: string;
+  /**
+   * The owner confirms the 7-year record-keeping period is over, or the
+   * records were exported and kept elsewhere. Required when the business has
+   * activity in the last 7 years.
+   */
+  retentionConfirmed?: boolean;
   /** Test seam. */
   removePlaidItem?: (accessToken: string) => Promise<void>;
 }) {
@@ -27,6 +33,16 @@ export async function deleteBusiness(opts: {
   if (membership?.role !== 'OWNER') throw new LedgerValidationError('Only an owner can delete a business.');
   if (opts.confirmName.trim() !== business.name) {
     throw new LedgerValidationError('Type the business name exactly to confirm.');
+  }
+
+  // Record keeping: books, returns' supporting records and filed 1099 copies
+  // are kept at least 7 years (IRS; our privacy notice promises it).
+  const latest = await latestActivity(business.id);
+  const keepUntil = latest ? new Date(Date.UTC(latest.getUTCFullYear() + 7, latest.getUTCMonth(), latest.getUTCDate())) : null;
+  if (keepUntil && keepUntil > new Date() && !opts.retentionConfirmed) {
+    throw new LedgerValidationError(
+      `This business has records from ${latest!.toISOString().slice(0, 10)}, which should be kept until ${keepUntil.toISOString().slice(0, 10)}. Export them first (P&L, transactions, 1099 copies), then tick the box confirming they are kept elsewhere.`,
+    );
   }
 
   const connections = await prisma.bankConnection.findMany({ where: { businessId: business.id } });
@@ -52,6 +68,8 @@ export async function deleteBusiness(opts: {
     bankConnections: connections.length,
     vendors,
     forms1099: forms,
+    latestActivity: latest?.toISOString().slice(0, 10) ?? null,
+    retentionConfirmedByOwner: !!opts.retentionConfirmed,
   };
 
   await prisma.$transaction(
@@ -84,4 +102,14 @@ export async function deleteBusiness(opts: {
   });
   // Client logins existed only for this business; they can't sign in to anything now.
   return { plaidItemsRemoved, summary };
+}
+
+/** Most recent dated record of a business (ledger entry or bank transaction). */
+async function latestActivity(businessId: string): Promise<Date | null> {
+  const [je, it] = await Promise.all([
+    prisma.journalEntry.aggregate({ where: { businessId }, _max: { date: true } }),
+    prisma.importedTransaction.aggregate({ where: { businessId }, _max: { date: true } }),
+  ]);
+  const dates = [je._max.date, it._max.date].filter((d): d is Date => !!d);
+  return dates.length ? new Date(Math.max(...dates.map((d) => d.getTime()))) : null;
 }

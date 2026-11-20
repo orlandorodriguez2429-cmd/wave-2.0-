@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { prisma } from '@/lib/db';
 import { readPendingMfa } from '@/lib/auth';
 import { enrollmentSecret } from '@/lib/mfa';
+import { newEnrollmentKeyAction } from '@/app/auth-actions';
 import { otpauthUrl } from '@/lib/totp';
 import { ContinueButton, MfaVerifyForm, MfaEnrollForm } from './mfa-forms';
 import { BrandMark } from '@/components/brand-mark';
@@ -35,14 +36,22 @@ export default async function MfaPage() {
   return (
     <Shell
       title="Set up two-step verification"
-      subtitle="Required for every account. Scan this with an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password, Authy…), then enter the code it shows."
+      subtitle="Required by law for accounts that can see client financial data. It takes about a minute."
     >
+      <ol className="list-decimal pl-5 text-sm text-slate-600 space-y-1">
+        <li>On your phone, install <strong>Google Authenticator</strong> or <strong>Microsoft Authenticator</strong> (free).</li>
+        <li>In the app tap <strong>+</strong>, then <strong>Scan a QR code</strong>, and scan the code below.</li>
+        <li>Type the 6-digit number the app shows for <strong>Your Tax Solution Books</strong> and press the button before it changes.</li>
+      </ol>
       <div className="flex flex-col items-center gap-2">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={qr} alt="QR code for your authenticator app" width={200} height={200} className="rounded border border-slate-200" />
         <p className="text-xs text-slate-500">Can&apos;t scan? Enter this key: <code className="select-all break-all">{secret.match(/.{1,4}/g)?.join(' ')}</code></p>
       </div>
       <MfaEnrollForm />
+      <form action={newEnrollmentKeyAction}>
+        <button className="text-xs text-slate-500 hover:underline">Start over with a new QR code</button>
+      </form>
     </Shell>
   );
 }

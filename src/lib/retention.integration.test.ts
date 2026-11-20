@@ -36,14 +36,15 @@ describe('deleteBusiness', () => {
 
   it('if Plaid removal fails, nothing is deleted', async () => {
     const { owner, biz } = await setup();
-    await expect(deleteBusiness({ businessId: biz.id, userId: owner, confirmName: biz.name, removePlaidItem: async () => { throw new Error('plaid down'); } })).rejects.toThrow('plaid down');
+    await expect(deleteBusiness({ businessId: biz.id, userId: owner, confirmName: biz.name, retentionConfirmed: true, removePlaidItem: async () => { throw new Error('plaid down'); } })).rejects.toThrow('plaid down');
     expect(await prisma.business.findUnique({ where: { id: biz.id } })).not.toBeNull();
   });
 
   it('removes Plaid items, deletes everything (posted ledger included), keeps a record', async () => {
     const { owner, biz } = await setup();
     const removed = vi.fn(async () => {});
-    const r = await deleteBusiness({ businessId: biz.id, userId: owner, confirmName: biz.name, removePlaidItem: removed });
+    await expect(deleteBusiness({ businessId: biz.id, userId: owner, confirmName: biz.name, removePlaidItem: removed })).rejects.toThrow(/kept until/);
+    const r = await deleteBusiness({ businessId: biz.id, userId: owner, confirmName: biz.name, retentionConfirmed: true, removePlaidItem: removed });
     expect(removed).toHaveBeenCalledWith('access-sandbox-xyz');
     expect(r.plaidItemsRemoved).toBe(1);
     expect(await prisma.business.findUnique({ where: { id: biz.id } })).toBeNull();

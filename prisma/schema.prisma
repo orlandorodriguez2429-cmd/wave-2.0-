@@ -40,6 +40,9 @@ model User {
   lockedUntil        DateTime?
   // Bumped on privilege/credential changes: every older session dies.
   sessionVersion     Int       @default(1)
+  // Privacy notice + terms the person accepted (version string), and when.
+  termsVersion       String?
+  termsAcceptedAt    DateTime?
   createdAt    DateTime     @default(now())
   mfaBackupCodes MfaBackupCode[]
   memberships  Membership[]
@@ -1452,4 +1455,40 @@ model AssistantConversation {
 
   @@index([userId, updatedAt])
   @@map("assistant_conversations")
+}
+
+// FTC Safeguards Rule housekeeping for the office (one install = one office):
+// when each recurring duty was last done (risk assessment, training, vendor
+// review, restore test, …). Append-only: each completion is a row.
+model ComplianceEvent {
+  id        String   @id @default(cuid())
+  item      String
+  doneAt    DateTime
+  userId    String
+  note      String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([item, doneAt])
+  @@map("compliance_events")
+}
+
+// Security incidents / suspected breaches, with the notification clock.
+model ComplianceIncident {
+  id               String    @id @default(cuid())
+  discoveredAt     DateTime
+  description      String
+  peopleAffected   Int       @default(0)
+  floridaResidents Int       @default(0)
+  unencryptedData  Boolean   @default(false)
+  containedAt      DateTime?
+  individualsNotifiedAt DateTime?
+  ftcNotifiedAt    DateTime?
+  floridaAgNotifiedAt   DateTime?
+  closedAt         DateTime?
+  notes            String    @default("")
+  createdById      String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@map("compliance_incidents")
 }

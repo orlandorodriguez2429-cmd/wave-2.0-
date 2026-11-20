@@ -42,7 +42,7 @@ export default async function ClientBank() {
       {plaidOn && (
         <div className="rounded-lg border border-slate-200 bg-white p-5 space-y-3">
           <h2 className="font-medium">Connect your bank</h2>
-          {/* PLACEHOLDER consent wording — to be reviewed by counsel (see /privacy). */}
+          {/* Consent shown before Plaid Link; acceptance is audit-logged on connect (bank_connection.consent). */}
           <div className="rounded-md bg-slate-50 p-4 text-sm text-slate-600 space-y-2">
             <p><strong>Before you connect:</strong></p>
             <ul className="list-disc pl-5 space-y-1">
@@ -52,7 +52,9 @@ export default async function ClientBank() {
               <li>Who sees it: your bookkeepers at Your Tax Solution, and you in this portal.</li>
               <li>You can ask us to disconnect at any time; history already received stays in your books.</li>
             </ul>
-            <p className="text-xs text-slate-400">By continuing you agree to share this information for that purpose. See our <a href="/privacy" className="underline">privacy policy</a>.</p>
+            <p className="text-xs text-slate-500">By continuing you authorize us to receive this information for that purpose and agree to the{' '}
+              <a href="https://plaid.com/legal/#end-user-privacy-policy" target="_blank" rel="noreferrer" className="underline">Plaid End User Privacy Policy</a>. See our{' '}
+              <a href="/privacy" className="underline">privacy notice</a>.</p>
           </div>
           <PlaidLinkButton label="I agree — connect my bank" audience="client" />
         </div>

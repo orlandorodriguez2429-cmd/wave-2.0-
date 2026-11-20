@@ -55,6 +55,7 @@ export function SidebarNav() {
       <TopLink href="/firm" label="All clients" icon="advisors" active={pathname === '/firm'} />
       <Section title="Books" icon="purchases" open={open.books} onToggle={() => toggle('books')} links={booksLinks} pathname={pathname} />
       <TopLink href="/settings/team" label="Team" small active={pathname === '/settings/team'} />
+      <TopLink href="/compliance" label="Compliance" small active={pathname?.startsWith('/compliance') ?? false} />
     </nav>
   );
 }

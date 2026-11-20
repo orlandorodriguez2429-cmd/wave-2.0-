@@ -55,17 +55,12 @@ never in the repository. Ciphertext is versioned (`v1:`) to allow rotation.
 
 ## 3. Authentication
 
-- **Two-step verification (TOTP, RFC 6238)** is **off by default** and is
-  required for every login (staff and clients) only when the server has
-  `REQUIRE_MFA=true`. A login that has set it up is always asked for a code.
-  **Note:** the FTC Safeguards Rule (16 CFR 314.4(c)(5)) requires
-  multi-factor authentication for anyone accessing customer information, and
-  Plaid's security review asks about it — set `REQUIRE_MFA=true` before
-  real client data is in the system. With it on, a full session only exists
-  after the second step.
-  Codes cannot be replayed. Ten one-time backup codes are issued at setup.
-  An owner can reset a member's two-step (lost phone), which ends that
-  member's sessions.
+- **Two-step verification (TOTP, RFC 6238) is required for every login** —
+  staff and clients (16 CFR 314.4(c)(5)). A full session only exists after
+  the second step. Codes cannot be replayed. Ten one-time backup codes are
+  issued at setup. An owner can reset a member's two-step (lost phone), which
+  ends that member's sessions. (`REQUIRE_MFA=false` exists only for local
+  demos and is flagged on the Compliance page.)
 - **Rate limits:** login per IP (20 / 15 min) and per email (8 / 15 min);
   MFA per user (6 / 10 min); invitations per business and per IP.
 - **Lockout:** 10 consecutive failures (password or code) lock the account
@@ -83,6 +78,20 @@ never in the repository. Ciphertext is versioned (`v1:`) to allow rotation.
 - **Client invitations:** single-use links, stored only as a hash, valid 72
   hours; a newer invitation cancels older ones. The client sets their own
   password and must set up two-step before seeing anything.
+
+### Notice and consent
+
+- Everyone accepts the current **privacy notice and terms** (`/privacy`,
+  `/terms`, versioned in `src/lib/legal.ts`) before seeing any data; the
+  acceptance (version, time, IP) is audit-logged. Changing the version makes
+  everyone accept again.
+- Clients see what Plaid shares, why, and a link to Plaid's End User Privacy
+  Policy before connecting a bank; the consent is audit-logged with the
+  connection. Staff are told to connect a client's bank only with the
+  client's authorization.
+- Tax return information is used and disclosed only as IRC §7216 allows
+  (preparing returns and the related bookkeeping, incl. auxiliary service
+  providers). Any other use needs the client's separate written §7216 consent.
 
 ## 4. Encryption in transit
 
@@ -124,7 +133,10 @@ Review each vendor's security attestations annually [and record where].
   and keeps a deletion record (who, when, counts). Export anything that law
   requires you to keep (e.g. filed 1099 copies, records supporting returns)
   **before** deleting.
-- [Retention schedule for client records, per the office's WISP.]
+- **Retention:** books and supporting records are kept at least **7 years**
+  after the tax year. Deleting a business with activity in the last 7 years
+  is refused unless the owner confirms the records were exported and are kept
+  elsewhere; that confirmation is stored in the deletion record.
 
 ## 8. Secure development
 
@@ -162,6 +174,19 @@ Review each vendor's security attestations annually [and record where].
 
 Contacts: [Qualified Individual] · [IT/host support] · [IRS Stakeholder
 Liaison for your state] · [cyber insurance carrier, if any].
+
+## 10b. Compliance page (in the app)
+
+Owner → **Compliance** tracks the recurring Safeguards duties (risk
+assessment, WISP review, staff training, access review, vendor review,
+vulnerability assessment every 6 months, annual penetration test, backup
+restore test, incident-plan review, secret rotation, PTIN renewal) with last
+done / next due; shows live checks (two-step required, everyone enrolled,
+terms accepted, office identity set, HTTPS, encryption key, backups
+confirmed); keeps the **incident log** with the 30-day notification deadlines
+(individuals and Florida AG under §501.171, FTC for 500+ people with
+unencrypted data); and prints the **annual report** to the owner
+(314.4(i)).
 
 ## 11. Things this app does not do (yet)
 

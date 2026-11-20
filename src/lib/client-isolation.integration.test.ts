@@ -2,6 +2,7 @@
 // context/action/route handler 404s, and the client's own actions refuse
 // another business's ids. Cookies are faked; everything else is real.
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { TERMS_VERSION } from '@/lib/legal';
 
 const jar = new Map<string, string>();
 vi.mock('next/headers', () => ({
@@ -44,8 +45,8 @@ const is404 = (err: unknown) => String((err as { digest?: string })?.digest ?? '
 
 beforeAll(async () => {
   const tag = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  staffUser = (await prisma.user.create({ data: { email: `staff-${tag}@t.local`, name: 'Staff' } })).id;
-  clientUser = (await prisma.user.create({ data: { email: `client-${tag}@t.local`, name: 'Client' } })).id;
+  staffUser = (await prisma.user.create({ data: { email: `staff-${tag}@t.local`, name: 'Staff', termsVersion: TERMS_VERSION } })).id;
+  clientUser = (await prisma.user.create({ data: { email: `client-${tag}@t.local`, name: 'Client', termsVersion: TERMS_VERSION } })).id;
   ownBiz = (await createBusiness({ userId: staffUser, name: 'Client Own Co' })).id;
   otherBiz = (await createBusiness({ userId: staffUser, name: 'Somebody Else Co' })).id;
   await prisma.membership.create({ data: { userId: clientUser, businessId: ownBiz, role: 'CLIENT' } });
@@ -151,5 +152,17 @@ describe('staff view audit', () => {
     expect(logs).toHaveLength(1);
     expect(logs[0].entityId).toBe('/reports/profit-loss');
     spy.mockRestore();
+  });
+});
+
+describe('privacy notice + terms', () => {
+  it('a login that has not accepted the current version is sent to /consent before any data', async () => {
+    await prisma.user.update({ where: { id: clientUser }, data: { termsVersion: '2000-01-01' } });
+    await loginAs(clientUser, ownBiz, 'CLIENT');
+    try {
+      await expect(getClientContext()).rejects.toThrow(/NEXT_REDIRECT/);
+    } finally {
+      await prisma.user.update({ where: { id: clientUser }, data: { termsVersion: TERMS_VERSION } });
+    }
   });
 });

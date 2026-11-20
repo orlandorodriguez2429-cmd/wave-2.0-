@@ -39,6 +39,9 @@ export async function clientExchangePublicTokenAction(publicToken: string): Prom
   if (typeof publicToken !== 'string' || !publicToken.startsWith('public-')) return { error: 'Invalid response from the bank window.' };
   try {
     const { id } = await connectPlaidItem({ businessId: business.id, userId: user.id, publicToken });
+    await prisma.auditLog.create({
+      data: { businessId: business.id, userId: user.id, action: 'bank_connection.consent', entityType: 'bank_connection', entityId: id, payload: { by: 'client', disclosure: 'client-bank-page', plaidPolicy: true } },
+    });
     await syncConnection({ businessId: business.id, userId: user.id, connectionId: id, trigger: 'connect' }).catch(() => undefined);
     revalidatePath('/client/bank');
     return {};

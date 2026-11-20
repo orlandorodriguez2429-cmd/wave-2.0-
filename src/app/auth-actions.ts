@@ -23,6 +23,7 @@ import { acceptInvite, createInvite, InviteError } from '@/lib/invites';
 import { deleteBusiness } from '@/lib/retention';
 import { requestPasswordReset, resetPassword, ResetError } from '@/lib/password-reset';
 import { runSetup, SetupError } from '@/lib/setup';
+import { TERMS_VERSION } from '@/lib/legal';
 import type { MembershipRole } from '@/generated/prisma/enums';
 import type { ActionResult } from './actions';
 
@@ -35,11 +36,12 @@ const GENERIC_LOGIN_ERROR = 'Invalid email or password.';
 const TOO_MANY = 'Too many attempts. Wait 15 minutes and try again.';
 
 /**
- * Two-step verification is optional unless REQUIRE_MFA=true. Someone who
- * turned it on for their own login is always asked for a code.
+ * Two-step verification is required for every login (FTC Safeguards Rule,
+ * 16 CFR 314.4(c)(5)). REQUIRE_MFA=false turns the requirement off for a
+ * local demo only; someone who has set it up is always asked for a code.
  */
 function mfaRequired(): boolean {
-  return process.env.REQUIRE_MFA === 'true';
+  return process.env.REQUIRE_MFA !== 'false';
 }
 
 /** After a correct password (or setup / accepted invite): code step, or straight in. */
@@ -299,7 +301,7 @@ export async function removeMemberAction(membershipId: string): Promise<void> {
 export async function deleteBusinessAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const { user, business } = await requireContext('OWNER');
   try {
-    await deleteBusiness({ businessId: business.id, userId: user.id, confirmName: String(formData.get('confirmName') ?? '') });
+    await deleteBusiness({ businessId: business.id, userId: user.id, confirmName: String(formData.get('confirmName') ?? ''), retentionConfirmed: formData.get('retentionConfirmed') === 'on' });
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'Could not delete.' };
   }
@@ -378,4 +380,31 @@ export async function setupAction(_prev: ActionResult, formData: FormData): Prom
     throw err;
   }
   return continueSignIn(result.userId, result.businessId);
+}
+
+/** Accept the current privacy notice + terms (recorded per person, audit-logged). */
+export async function acceptTermsAction(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  const session = await readSession();
+  if (!session) redirect('/login');
+  if (formData.get('agree') !== 'on') return { error: 'Please tick the box to continue.' };
+  const user = await prisma.user.update({
+    where: { id: session.userId },
+    data: { termsVersion: TERMS_VERSION, termsAcceptedAt: new Date() },
+    include: { memberships: true },
+  });
+  const m = user.memberships.find((x) => x.businessId === session.businessId) ?? user.memberships[0];
+  if (m) {
+    await prisma.auditLog.create({
+      data: { businessId: m.businessId, userId: user.id, action: 'legal.terms_accepted', entityType: 'user', entityId: user.id, payload: { version: TERMS_VERSION, ip: await clientIp() } },
+    });
+  }
+  redirect(m?.role === 'CLIENT' ? '/client' : '/');
+}
+
+/** Two-step setup not finished yet: throw away the key and show a new QR code. */
+export async function newEnrollmentKeyAction(): Promise<void> {
+  const pending = await readPendingMfa();
+  if (!pending || pending.stage !== 'enroll') redirect('/login');
+  await prisma.user.updateMany({ where: { id: pending.userId, mfaEnabledAt: null }, data: { mfaSecretEncrypted: null } });
+  redirect('/login/mfa');
 }

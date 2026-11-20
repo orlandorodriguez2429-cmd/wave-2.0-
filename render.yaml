@@ -25,12 +25,23 @@ services:
         generateValue: true
       - key: APP_URL # e.g. https://books.yourtaxsolution.com
         sync: false
+      # Office identity shown on the privacy notice and terms (required by law to be accurate).
+      - key: FIRM_LEGAL_NAME # e.g. Your Tax Solution LLC
+        sync: false
+      - key: FIRM_ADDRESS # street, city, FL zip
+        sync: false
+      - key: FIRM_PRIVACY_EMAIL # where clients send privacy requests
+        sync: false
+      - key: FIRM_PHONE
+        sync: false
+      - key: DB_BACKUPS_CONFIRMED # set "true" once the database is on a paid plan with backups
+        value: "false"
       - key: PLAID_CLIENT_ID
         sync: false
       - key: PLAID_SECRET
         sync: false
-      - key: REQUIRE_MFA # "true" = two-step verification for every login (off for now)
-        value: "false"
+      - key: REQUIRE_MFA # two-step verification for every login (FTC Safeguards Rule) — keep "true"
+        value: "true"
       - key: PLAID_ENV # sandbox until Plaid approves production
         value: sandbox
       - key: PLAID_OAUTH_REDIRECT # "true" after registering <APP_URL>/plaid-oauth and <APP_URL>/client/plaid-oauth in Plaid
